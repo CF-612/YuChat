@@ -1,0 +1,4 @@
+.build/
+.dotnet/
+bin/
+obj/

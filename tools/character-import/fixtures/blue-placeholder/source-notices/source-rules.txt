@@ -1,0 +1,62 @@
+感谢下载该模型！
+
+模型角色：蓝色大肥鱼
+
+✧ 在使用模型时请注明以下借物 ✧
+模型制作：水原镜
+MMD转换绑定：耶栗Yaki
+
+=====【允许事项】=====
+◆允许在本模型能被辨认出是“蓝色大肥鱼”的前提下改造模型
+◆允许对模型进行改良，如：修正骨骼、物理、表情、spa和toon贴图等
+
+=====【禁止事项】=====
+◆禁止改造为其他角色
+◆禁止拆取部件、将部件挪用至其他模型
+◆禁止用于制作非法、政治、宗教、血腥暴力、R18等不良内容
+◆禁止隐瞒或删改作者
+◆禁止商业使用
+◆禁止将模型作为自己的形象 如：用于直播等
+◆禁止用于非MMD视频制作的用途
+◆作者对使用本模型所造成的一切不良后果不承担任何责任
+
+=====【注意事项】=====
+→由于Vroid模型的限制，材质会较多（尤其头发）
+→模型有部分透明通道材质造成的材质白边情况，在MMD里使用可能会比较难以渲染。
+→使用时请将模型放在场景下面，如使用Ray渲请关闭抗锯齿。
+→部分动作骨骼可能会有状况，请适当调节动作幅度。
+感谢你读到这里，使用愉快！
+
+
+—————————————————————————————
+
+
+Thank you for downloading this model!
+
+Model character: Blue Big Fat Fish
+
+✧ Please credit the following when using this model ✧
+Modeled: 水原镜
+Rigged: 耶栗Yaki
+
+===== [Allowed] =====
+◆ You may edit the model as long as it stays recognizable as "Blue Big Fat Fish".
+◆ You may improve it, such as fixing bones, physics, expressions, spa and toon maps, etc.
+
+===== [Prohibited] =====
+◆ Do not edit it into another character.
+◆ Do not take parts out or reuse them in other models.
+◆ Do not use for illegal, political, religious, bloody/violent, R18, or other inappropriate content.
+◆ Do not hide or remove the author's name.
+◆ No commercial use.
+◆ Do not use the model as your own image/avatar (e.g. for live streaming).
+◆ Do not use it for purposes other than MMD video creation.
+◆ The author is not responsible for any bad consequences caused by using this model.
+
+===== [Notes] =====
+→ Due to Vroid model limits, there are many materials (especially for hair).
+→ Some materials with transparency may show white edges, making them hard to render well in MMD.
+→ Place the model at the bottom of the scene when using it. If using Ray render, turn off anti-aliasing.
+→ Some motion bones may have issues, so adjust motion intensity as needed.
+
+Thank you for reading. Enjoy using the model!

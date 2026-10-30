@@ -1,0 +1,7 @@
+{
+  "name": "LingChatXR.Editor",
+  "rootNamespace": "LingChatXR.Editor",
+  "references": ["LingChatXR.Runtime", "LingChatXR.Core", "VRM10"],
+  "includePlatforms": ["Editor"],
+  "autoReferenced": true
+}

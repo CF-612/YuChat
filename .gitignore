@@ -1,0 +1,45 @@
+LingChat-XR/[Ll]ibrary/
+LingChat-XR/[Tt]emp/
+LingChat-XR/[Oo]bj/
+LingChat-XR/[Ll]ogs/
+LingChat-XR/[Uu]ser[Ss]ettings/
+LingChat-XR/*.csproj
+LingChat-XR/*.sln
+LingChat-XR/Assets/StreamingAssets/Characters/local-*/
+Builds/
+.cache/
+**/bin/
+**/obj/
+**/node_modules/
+*.user
+
+# Local credentials, private sessions and machine-only state
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.local/
+.vs/
+.idea/
+.vscode/
+SafeNet Sentinel/
+**/target/
+*.zip
+*.exe
+*.msi
+*.apk
+*.aab
+
+# Third-party model is local-only; source notices and manifest remain versioned.
+LingChat-XR/Assets/StreamingAssets/Characters/blue-placeholder/model.vrm
+LingChat-XR/Assets/StreamingAssets/Characters/blue-placeholder/model.vrm.meta
+
+# Raw evidence can contain machine/license details or restricted model renders.
+evidence/**/*.log
+evidence/**/*.png
+evidence/**/*.jpg
+evidence/**/*.mp4
+evidence/**/*.wav
+evidence/**/*.so
+evidence/unity6-smoke-failure.txt

@@ -1,0 +1,214 @@
+{
+  "date": "2026-10-30",
+  "timezone": "Asia/Shanghai",
+  "capturedUtc": "2026-10-30T04:46:10.625954Z",
+  "lingchatHead": null,
+  "status": "Research/draft baseline only. No code adoption. Tests inspected, not rerun.",
+  "files": [
+    {
+      "source": "LingChat",
+      "path": "D:\\GameCreator\\Document\\LingChat\\.codex-worktrees\\vrm-mvp\\docs\\vrm\\GENERIC-INTERACTION-2026-10-30.md",
+      "sha256": "1cfec64d0f87eadfe1c7a20f8db4c23a73f9a680349c21c3fdc5974fc7b8ce46",
+      "lastWriteUtc": "2026-10-30T04:24:44.6710933Z"
+    },
+    {
+      "source": "LingChat",
+      "path": "D:\\GameCreator\\Document\\LingChat\\.codex-worktrees\\vrm-mvp\\docs\\vrm\\EXPRESSION-ENTRANCE-MOTION-HANDOFF-2026-10-28.md",
+      "sha256": "3caa36cc514352461758f8d78591f4c09ec5112fb740e185dd35cfcbaf154799",
+      "lastWriteUtc": "2026-10-28T13:47:37.3530122Z"
+    },
+    {
+      "source": "LingChat",
+      "path": "D:\\GameCreator\\Document\\LingChat\\.codex-worktrees\\vrm-mvp\\docs\\vrm\\STAGE-ACTION-LIFECYCLE.md",
+      "sha256": "678eec2f497297e2b955f4431c2eed0825bdc48b7ac7dd5a85e93150eefa0011",
+      "lastWriteUtc": "2026-10-26T01:20:32.7824466Z"
+    },
+    {
+      "source": "LingChat",
+      "path": "D:\\GameCreator\\Document\\LingChat\\.codex-worktrees\\vrm-mvp\\src\\types\\vrm.ts",
+      "sha256": "f4931297c6300730cab40d55e33ec8f2da66eabbd52450be8831781dac5a27cd",
+      "lastWriteUtc": "2026-10-30T04:32:45.7866153Z"
+    },
+    {
+      "source": "LingChat",
+      "path": "D:\\GameCreator\\Document\\LingChat\\.codex-worktrees\\vrm-mvp\\src\\types\\vrm-effects.ts",
+      "sha256": "27d155fe54f9352b75009b8a6b92b74b4d6b07454f42f1d844956b286c500ced",
+      "lastWriteUtc": "2026-10-27T03:58:58.8084606Z"
+    },
+    {
+      "source": "LingChat",
+      "path": "D:\\GameCreator\\Document\\LingChat\\.codex-worktrees\\vrm-mvp\\src\\controllers\\emotion\\config.ts",
+      "sha256": "d567c651d280837fb2b806e62fa1b5ece8816c8ee7b2b73bc082b88ac46a3ae2",
+      "lastWriteUtc": "2026-10-17T06:27:29.780658Z"
+    },
+    {
+      "source": "LingChat",
+      "path": "D:\\GameCreator\\Document\\LingChat\\.codex-worktrees\\vrm-mvp\\src\\composables\\role\\useRoleAvatar.ts",
+      "sha256": "e2a78ab5b4005e968cbcab7febcfb229af49feae7fb03cd59296b0be4a2706b3",
+      "lastWriteUtc": "2026-10-26T13:30:36.0050627Z"
+    },
+    {
+      "source": "LingChat",
+      "path": "D:\\GameCreator\\Document\\LingChat\\.codex-worktrees\\vrm-mvp\\src\\components\\game\\vrm\\expression-library.ts",
+      "sha256": "fbc5f79ed68fd2873d29e2228800bb0e3b559fa636534c33add0fb454a203cc1",
+      "lastWriteUtc": "2026-10-27T04:54:59.8173095Z"
+    },
+    {
+      "source": "LingChat",
+      "path": "D:\\GameCreator\\Document\\LingChat\\.codex-worktrees\\vrm-mvp\\src\\components\\game\\vrm\\face-channel-composer.ts",
+      "sha256": "1c6470a5540f77d2c84395163dd05f531ab44465a0d5b790b04f8a174143b41c",
+      "lastWriteUtc": "2026-10-28T06:55:40.8878051Z"
+    },
+    {
+      "source": "LingChat",
+      "path": "D:\\GameCreator\\Document\\LingChat\\.codex-worktrees\\vrm-mvp\\src\\components\\game\\vrm\\expression-effects.ts",
+      "sha256": "b4287190030e81eedc6fa001deec005f4ebf7aa6ff5c7784d7e3201361fa3927",
+      "lastWriteUtc": "2026-10-27T03:58:57.7624807Z"
+    },
+    {
+      "source": "LingChat",
+      "path": "D:\\GameCreator\\Document\\LingChat\\.codex-worktrees\\vrm-mvp\\src\\components\\game\\vrm\\soullink-face.ts",
+      "sha256": "77716fab6ae34ae07482f659629ce761c623320d612f5a77b6a49140743faeb1",
+      "lastWriteUtc": "2026-10-27T13:05:47.0990882Z"
+    },
+    {
+      "source": "LingChat",
+      "path": "D:\\GameCreator\\Document\\LingChat\\.codex-worktrees\\vrm-mvp\\src\\components\\game\\vrm\\author-expressions.ts",
+      "sha256": "c79fb743b15a51a6693e9562a1b8b15c475462d96999a25ad22a9bdb503a2c16",
+      "lastWriteUtc": "2026-10-30T04:38:45.5248781Z"
+    },
+    {
+      "source": "LingChat",
+      "path": "D:\\GameCreator\\Document\\LingChat\\.codex-worktrees\\vrm-mvp\\src\\components\\game\\vrm\\action-library.ts",
+      "sha256": "5c3d86c7db32016162d8a2e09a228f91b079c659dce156be1e3ddab9c2a1d30e",
+      "lastWriteUtc": "2026-10-27T04:22:09.6920675Z"
+    },
+    {
+      "source": "LingChat",
+      "path": "D:\\GameCreator\\Document\\LingChat\\.codex-worktrees\\vrm-mvp\\src\\components\\game\\vrm\\daily-motion.ts",
+      "sha256": "a834c568883ba2f70b20e0d24241e2f3ed03de3823d07373372d7e34925c41ad",
+      "lastWriteUtc": "2026-10-29T05:48:58.8758003Z"
+    },
+    {
+      "source": "LingChat",
+      "path": "D:\\GameCreator\\Document\\LingChat\\.codex-worktrees\\vrm-mvp\\src\\components\\game\\vrm\\stage-action.ts",
+      "sha256": "f150ab1176beb7610c5faf7aaaecf0912d47c4164ed7ec6a68589f7588d2acd8",
+      "lastWriteUtc": "2026-10-29T05:51:16.7646468Z"
+    },
+    {
+      "source": "LingChat",
+      "path": "D:\\GameCreator\\Document\\LingChat\\.codex-worktrees\\vrm-mvp\\src\\components\\game\\vrm\\touch-eyelids.ts",
+      "sha256": "702e5e85c7aa0c5b6ed0e9e28f2d62686ce93513ce398a7696107b2845d3fa8c",
+      "lastWriteUtc": "2026-10-30T04:38:44.3956302Z"
+    },
+    {
+      "source": "LingChat",
+      "path": "D:\\GameCreator\\Document\\LingChat\\.codex-worktrees\\vrm-mvp\\crates\\ling-chat-main\\src\\ai_service\\god_agent\\capabilities\\stage_action.rs",
+      "sha256": "38249e92cc53a383a50935ad65b4dec1f55204852059d353ea19487998fd379c",
+      "lastWriteUtc": "2026-10-25T09:03:56.6751487Z"
+    },
+    {
+      "source": "LingChat",
+      "path": "D:\\GameCreator\\Document\\LingChat\\.codex-worktrees\\vrm-mvp\\scripts\\check-expression-effects.mjs",
+      "sha256": "22e99dbeaa3bda7b27b783394a10dfd66c383079ae98abda660585262b625996",
+      "lastWriteUtc": "2026-10-27T03:51:06.470192Z"
+    },
+    {
+      "source": "LingChat",
+      "path": "D:\\GameCreator\\Document\\LingChat\\.codex-worktrees\\vrm-mvp\\scripts\\check-expression-library.mjs",
+      "sha256": "64ea696b7ce915c418dacf7b6071d2a1da066818f9907db72e26705a02c95079",
+      "lastWriteUtc": "2026-10-27T05:14:30.6499341Z"
+    },
+    {
+      "source": "LingChat",
+      "path": "D:\\GameCreator\\Document\\LingChat\\.codex-worktrees\\vrm-mvp\\scripts\\check-face-channel-composer.mjs",
+      "sha256": "fa7eb11d5bd7bfda852de99f9aad5b2f0e9e881b49267b50a732fb298d7abea9",
+      "lastWriteUtc": "2026-10-26T15:40:03.17521Z"
+    },
+    {
+      "source": "LingChat",
+      "path": "D:\\GameCreator\\Document\\LingChat\\.codex-worktrees\\vrm-mvp\\scripts\\check-author-expression-recipes.mjs",
+      "sha256": "7cf5ab97e38a53150eb85c20292e2e21adc7b917ff3621f9def185c26f784d0d",
+      "lastWriteUtc": "2026-10-26T01:55:01.2706637Z"
+    },
+    {
+      "source": "LingChat",
+      "path": "D:\\GameCreator\\Document\\LingChat\\.codex-worktrees\\vrm-mvp\\scripts\\check-stage-action-lifecycle.mjs",
+      "sha256": "ef7d5f643e32c3216fc029c9a14bd3f89916d9eea0946701ac40339797ffe600",
+      "lastWriteUtc": "2026-10-29T05:55:13.2476148Z"
+    },
+    {
+      "source": "LingChat",
+      "path": "D:\\GameCreator\\Document\\LingChat\\.codex-worktrees\\vrm-mvp\\scripts\\check-daily-motion.mjs",
+      "sha256": "30b9f47ecf0393c4b252bcd300d9933b395bbad7c596107a405cb42957c231c3",
+      "lastWriteUtc": "2026-10-29T05:55:13.1913695Z"
+    },
+    {
+      "source": "LingChat",
+      "path": "D:\\GameCreator\\Document\\LingChat\\.codex-worktrees\\vrm-mvp\\public\\pictures\\animation\\疑问.webp",
+      "sha256": "672af36db82754aec819e516fae2f823687dd130582e5a0a9ed892d7fcbd6f76",
+      "lastWriteUtc": "2026-10-17T06:27:29.3899885Z"
+    },
+    {
+      "source": "LingChat",
+      "path": "D:\\GameCreator\\Document\\LingChat\\.codex-worktrees\\vrm-mvp\\public\\pictures\\animation\\生气2.webp",
+      "sha256": "c3ba07639516462f78f8d51b05d9a3fb78f42c2e6e9d658b94920b4805cfc235",
+      "lastWriteUtc": "2026-10-17T06:27:29.3774254Z"
+    },
+    {
+      "source": "LingChat",
+      "path": "D:\\GameCreator\\Document\\LingChat\\.codex-worktrees\\vrm-mvp\\public\\pictures\\animation\\惊讶.webp",
+      "sha256": "6ad4db5d1a54d64d52ca973cbe3d73b413f46943d99b7684f570b2ae840d6792",
+      "lastWriteUtc": "2026-10-17T06:27:29.3361155Z"
+    },
+    {
+      "source": "XR",
+      "path": "D:\\GameCreator\\Document\\DesktopSmallBlueFish\\docs\\character-compatibility.md",
+      "sha256": "2e1265dfdca736bfa2afd0ab5a3979b7440ff87aeb7d0094ff914ef672e087ba",
+      "lastWriteUtc": "2026-10-29T12:48:05.7101718Z"
+    },
+    {
+      "source": "XR",
+      "path": "D:\\GameCreator\\Document\\DesktopSmallBlueFish\\docs\\Q1-DROP-VIEW-FIX.md",
+      "sha256": "733296b443e7a3cdedbfa3a753023835bade3310cddd12c2566fe9cb86d5b191",
+      "lastWriteUtc": "2026-10-30T03:38:21.0528324Z"
+    },
+    {
+      "source": "XR",
+      "path": "D:\\GameCreator\\Document\\DesktopSmallBlueFish\\docs\\Q1-FOOTPRINT-TABLE-2026-10-30.md",
+      "sha256": "f1213ece52e16df60f8230f26b0788ca1b404212d2d4c090426c06e0d97fc576",
+      "lastWriteUtc": "2026-10-30T04:37:51.8927704Z"
+    },
+    {
+      "source": "XR",
+      "path": "D:\\GameCreator\\Document\\DesktopSmallBlueFish\\LingChat-XR\\Assets\\LingChatXR\\Runtime\\FeiyuAvatar.cs",
+      "sha256": "9783bddbc3dc7621f0f9c108b1d06e579625498aa18ceb33854203ce338d025d",
+      "lastWriteUtc": "2026-10-30T04:36:35.9078628Z"
+    },
+    {
+      "source": "XR",
+      "path": "D:\\GameCreator\\Document\\DesktopSmallBlueFish\\LingChat-XR\\Assets\\LingChatXR\\Runtime\\FeiyuPreview.cs",
+      "sha256": "4f337bdb6e3400760853030da9b1dd1f5b59a21925d6437b9c8ddb1464a902cf",
+      "lastWriteUtc": "2026-10-30T04:34:25.8307017Z"
+    },
+    {
+      "source": "XR",
+      "path": "D:\\GameCreator\\Document\\DesktopSmallBlueFish\\LingChat-XR\\Assets\\LingChatXR\\Core\\PetInteraction.cs",
+      "sha256": "35e4c6f998ff85d24c4e0a561bf511735dd60ba4d7061f7aed1eaf6ef764e91b",
+      "lastWriteUtc": "2026-10-29T12:35:08.4380834Z"
+    },
+    {
+      "source": "XR",
+      "path": "D:\\GameCreator\\Document\\DesktopSmallBlueFish\\LingChat-XR\\Assets\\LingChatXR\\Runtime\\Speech\\XrSpeechController.cs",
+      "sha256": "35a533391b30b6b02997be7c5f9b5128ecf93edcaae8043704f0b95480f2a45f",
+      "lastWriteUtc": "2026-10-29T12:44:31.5657197Z"
+    },
+    {
+      "source": "XR",
+      "path": "D:\\GameCreator\\Document\\DesktopSmallBlueFish\\tools\\character-import\\import.mjs",
+      "sha256": "1a435963d5e9a49de56e7b0d49a130ca8d9df5768bb7b61c18bf9547fb1d4a3b",
+      "lastWriteUtc": "2026-10-29T12:47:41.2879254Z"
+    }
+  ],
+  "headReadStatus": "Git query failed: Permission denied; file SHA256 used for this review."
+}

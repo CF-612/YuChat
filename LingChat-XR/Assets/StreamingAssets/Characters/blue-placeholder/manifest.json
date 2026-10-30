@@ -1,0 +1,90 @@
+{
+  "schemaVersion": 1,
+  "generator": "lingchat-xr-character-import/0.1.0",
+  "sourceFormat": "lingchat-settings-yaml",
+  "source": {
+    "sourceId": "d808ecdc349b049d45ed630bb5d6a910522e801d8ca82356614e34ac445126e5",
+    "settingsSha256": "38e55371b540020d27f751c548502842aa1e280955f0b5c7fdf931d3c7d55101",
+    "vrmSettingsVersion": null
+  },
+  "characterId": "blue-placeholder",
+  "displayName": "小肥鱼（Q1 占位）",
+  "character": {
+    "ai_name": "小肥鱼（Q1 占位）",
+    "ai_subtitle": "独立 LingChat XR 本机互动样本",
+    "title": "BlueBigFatFish Q1 placeholder",
+    "info": "合成 LingChat 格式资料，仅验证独立 XR 导入与交互。",
+    "system_prompt": "这是用于导入测试的合成人设，不启动聊天或语音服务。"
+  },
+  "voiceReference": {
+    "tts_type": "localsbv2api",
+    "voice_lang": "ja"
+  },
+  "model": {
+    "path": "model.vrm",
+    "sha256": "733f30dca19ec899eb6cfd3f69210ce9d5b13be52cbfc73475a280ad69cf3fc6",
+    "bytes": 14061476,
+    "format": "vrm-1.0",
+    "isPlaceholder": true,
+    "sourceBinding": "missing"
+  },
+  "assets": [
+    {
+      "path": "model.vrm",
+      "sha256": "733f30dca19ec899eb6cfd3f69210ce9d5b13be52cbfc73475a280ad69cf3fc6",
+      "bytes": 14061476,
+      "kind": "model"
+    },
+    {
+      "path": "source-rules.txt",
+      "sha256": "5845d04c64f835b9b28f4d68d60c52ca7885b0bf3cfec9a7abce69b105bef24a",
+      "bytes": 2680,
+      "kind": "source-rules"
+    }
+  ],
+  "lingchatVrm": null,
+  "extensions": {
+    "future_compatibility": {
+      "enabled": false,
+      "selected": []
+    }
+  },
+  "capabilities": {
+    "hasModel": true,
+    "basicExpressions": [
+      "neutral",
+      "blinkRight",
+      "blinkLeft",
+      "aa",
+      "ih",
+      "ou",
+      "ee",
+      "oh",
+      "blink",
+      "lookLeft",
+      "lookRight",
+      "lookUp",
+      "lookDown",
+      "happy",
+      "angry",
+      "sad",
+      "relaxed",
+      "surprised"
+    ],
+    "animationsEmbedded": 0,
+    "lingchatExpressionsExecution": "basic-vrm-only",
+    "nativeMotionsExecution": "not-implemented",
+    "ttsExecution": "separately-configured"
+  },
+  "missing": [
+    {
+      "code": "CHARACTER_HAS_NO_3D_MODEL",
+      "message": "The source character has no VRM model binding."
+    }
+  ],
+  "xrCalibration": {
+    "status": "required",
+    "modelSha256": "733f30dca19ec899eb6cfd3f69210ce9d5b13be52cbfc73475a280ad69cf3fc6"
+  },
+  "omittedFields": []
+}

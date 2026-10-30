@@ -1,0 +1,9 @@
+{
+  "name": "lingchat-xr-character-import",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": { "test": "node --test importer.test.mjs" },
+  "dependencies": { "yaml": "2.8.1" }
+}

@@ -1,0 +1,12 @@
+# Synthetic Q1 fixture. This is not the user's DeepSeek character configuration.
+ai_name: 小肥鱼（Q1 占位）
+ai_subtitle: 独立 LingChat XR 本机互动样本
+title: BlueBigFatFish Q1 placeholder
+info: 合成 LingChat 格式资料，仅验证独立 XR 导入与交互。
+system_prompt: 这是用于导入测试的合成人设，不启动聊天或语音服务。
+tts_type: localsbv2api
+voice_lang: ja
+future_compatibility:
+  enabled: false
+  selected: []
+# Deliberately no vrm.model: the CLI must explicitly supply the existing VRM.

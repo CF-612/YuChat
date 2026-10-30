@@ -1,0 +1,228 @@
+{
+  "capturedUtc": "2026-10-30T05:03:29.0120160Z",
+  "purpose": "基础批次规划来源快照；未移植代码",
+  "lingchatHead": null,
+  "headNote": "本次未取得可核实 HEAD，以相关工作树文件 SHA 为准",
+  "files": [
+    {
+      "path": "D:\\GameCreator\\Document\\LingChat\\.codex-worktrees\\vrm-mvp\\docs\\vrm\\GENERIC-INTERACTION-2026-10-30.md",
+      "sha256": "dc1a42996d475de81c872c2d059b2280732d74d4b5a112db3048f013c939cb76",
+      "lastWriteUtc": "2026-10-30T05:03:21.7346390Z"
+    },
+    {
+      "path": "D:\\GameCreator\\Document\\LingChat\\.codex-worktrees\\vrm-mvp\\docs\\vrm\\TOUCH-EXPRESSION-AND-HANDS-2026-10-30.md",
+      "sha256": "5ef30c25b72484373fd80dd9fd782dd64a2d83edab35ef81f292b5b7e5bd53d0",
+      "lastWriteUtc": "2026-10-30T05:03:22.1335399Z"
+    },
+    {
+      "path": "D:\\GameCreator\\Document\\LingChat\\.codex-worktrees\\vrm-mvp\\docs\\vrm\\INTERACTION-CONTINUATION-HANDOFF-2026-10-29.md",
+      "sha256": "3089564287a7803976e7c93497e5e4940d2ee3eb7839c0ed2cd3513a73dabaee",
+      "lastWriteUtc": "2026-10-30T05:03:21.2948833Z"
+    },
+    {
+      "path": "D:\\GameCreator\\Document\\LingChat\\.codex-worktrees\\vrm-mvp\\src\\components\\game\\vrm\\pointer-attention.ts",
+      "sha256": "01a3d7d6cc44b8e09bfc93283d90bed651fb9bd27694f9f1954c87a88eda8719",
+      "lastWriteUtc": "2026-10-29T13:43:45.2472585Z"
+    },
+    {
+      "path": "D:\\GameCreator\\Document\\LingChat\\.codex-worktrees\\vrm-mvp\\src\\components\\game\\vrm\\pointer-gaze-session.ts",
+      "sha256": "57940a6d865049b20ba1934849fc78d37acd9354a650ab43bf17891a22592b3a",
+      "lastWriteUtc": "2026-10-29T12:41:07.8076650Z"
+    },
+    {
+      "path": "D:\\GameCreator\\Document\\LingChat\\.codex-worktrees\\vrm-mvp\\src\\components\\game\\vrm\\touch-regions.ts",
+      "sha256": "ef65921dbace963565e1b51f6c50f4c2b4bc1174b7d965b2f28f7f12eebcb348",
+      "lastWriteUtc": "2026-10-30T04:38:44.5408218Z"
+    },
+    {
+      "path": "D:\\GameCreator\\Document\\LingChat\\.codex-worktrees\\vrm-mvp\\src\\components\\game\\vrm\\touch-eyelids.ts",
+      "sha256": "702e5e85c7aa0c5b6ed0e9e28f2d62686ce93513ce398a7696107b2845d3fa8c",
+      "lastWriteUtc": "2026-10-30T04:38:44.3956302Z"
+    },
+    {
+      "path": "D:\\GameCreator\\Document\\LingChat\\.codex-worktrees\\vrm-mvp\\src\\components\\game\\vrm\\touch-sway.ts",
+      "sha256": "b1d7f7db7b8457087b795456587459da4fbe266c68b85c78ae3b1378937e987c",
+      "lastWriteUtc": "2026-10-29T13:53:44.8750450Z"
+    },
+    {
+      "path": "D:\\GameCreator\\Document\\LingChat\\.codex-worktrees\\vrm-mvp\\src\\components\\game\\vrm\\touch-sound.ts",
+      "sha256": "64a281b4da936c019d7d148945ed090af7757f4f110a2d6c570b044f816feb0d",
+      "lastWriteUtc": "2026-10-29T13:34:35.5794325Z"
+    },
+    {
+      "path": "D:\\GameCreator\\Document\\LingChat\\.codex-worktrees\\vrm-mvp\\src\\components\\game\\vrm\\touch-reply-policy.ts",
+      "sha256": "81d5f86f927ffc342fbc3d832a8a0738a0d106bc432fe2174897fbd24830c5b2",
+      "lastWriteUtc": "2026-10-29T13:57:03.9806885Z"
+    },
+    {
+      "path": "D:\\GameCreator\\Document\\LingChat\\.codex-worktrees\\vrm-mvp\\src\\components\\game\\vrm\\touch-expression.ts",
+      "sha256": "7d83b33e79b6e485c8c600e6d31621ce023566f2818d3bf60691cd05e339369c",
+      "lastWriteUtc": "2026-10-30T04:38:44.3686384Z"
+    },
+    {
+      "path": "D:\\GameCreator\\Document\\LingChat\\.codex-worktrees\\vrm-mvp\\src\\components\\game\\vrm\\face-channel-composer.ts",
+      "sha256": "1c6470a5540f77d2c84395163dd05f531ab44465a0d5b790b04f8a174143b41c",
+      "lastWriteUtc": "2026-10-28T06:55:40.8878051Z"
+    },
+    {
+      "path": "D:\\GameCreator\\Document\\LingChat\\.codex-worktrees\\vrm-mvp\\src\\components\\game\\vrm\\VrmStage.vue",
+      "sha256": "2945bfdafdf8adc46c517b655df3ada2c815f727d2a8f4973ff1cb8f103b1cb2",
+      "lastWriteUtc": "2026-10-30T04:38:45.3613917Z"
+    },
+    {
+      "path": "D:\\GameCreator\\Document\\LingChat\\.codex-worktrees\\vrm-mvp\\src\\components\\game\\vrm\\vrm-runtime.ts",
+      "sha256": "3a07a1bbebd407432382a1265a13cc340efa7b5901be947c5aa9f46ff3f2966e",
+      "lastWriteUtc": "2026-10-30T04:39:23.5030577Z"
+    },
+    {
+      "path": "D:\\GameCreator\\Document\\LingChat\\.codex-worktrees\\vrm-mvp\\src\\composables\\role\\useVoicePlayback.ts",
+      "sha256": "a7dcd2f5ba51554bc0f88acab903c1a877287f9d3a7523dfe667b669db69bd19",
+      "lastWriteUtc": "2026-10-29T11:21:45.3720796Z"
+    },
+    {
+      "path": "D:\\GameCreator\\Document\\LingChat\\.codex-worktrees\\vrm-mvp\\src\\types\\vrm.ts",
+      "sha256": "f4931297c6300730cab40d55e33ec8f2da66eabbd52450be8831781dac5a27cd",
+      "lastWriteUtc": "2026-10-30T04:32:45.7866153Z"
+    },
+    {
+      "path": "D:\\GameCreator\\Document\\LingChat\\.codex-worktrees\\vrm-mvp\\public\\audio\\pet.mp3",
+      "sha256": "f564c47658342aa32050d496c6bcd6adde99100c7d4c313a89ea009e73056266",
+      "lastWriteUtc": "2026-10-17T06:27:29.1748257Z"
+    },
+    {
+      "path": "D:\\GameCreator\\Document\\LingChat\\.codex-worktrees\\vrm-mvp\\crates\\ling-chat-main\\src\\ai_service\\message_system\\generator\\mod.rs",
+      "sha256": "87df2255b6b331cf1d981b6a7cfedace72c75ebcf51a9b3f78d83cf5a92e7cb9",
+      "lastWriteUtc": "2026-10-26T13:34:09.5878989Z"
+    },
+    {
+      "path": "D:\\GameCreator\\Document\\LingChat\\.codex-worktrees\\vrm-mvp\\crates\\ling-chat-main\\src\\ai_service\\message_system\\responses.rs",
+      "sha256": "049bcd2c27124ec20efc041345d9f417f94e7f7dd69869a56d73f315229cd5de",
+      "lastWriteUtc": "2026-10-23T13:43:09.7362808Z"
+    },
+    {
+      "path": "D:\\GameCreator\\Document\\LingChat\\.codex-worktrees\\vrm-mvp\\crates\\ling-chat-main\\src\\ai_service\\tts\\provider.rs",
+      "sha256": "1bf3320cf58b86d684cc71def5ee974855f77f9bc72f8e0de3ed0d040f870b21",
+      "lastWriteUtc": "2026-10-17T06:27:28.6003742Z"
+    },
+    {
+      "path": "D:\\GameCreator\\Document\\LingChat\\.codex-worktrees\\vrm-mvp\\crates\\ling-chat-main\\src\\ai_service\\tts\\voice_maker.rs",
+      "sha256": "b8594488d800e755b3d8d4c3ed986b93deb06e12f0e62ed4738b677913e03755",
+      "lastWriteUtc": "2026-10-17T06:27:28.6003742Z"
+    },
+    {
+      "path": "D:\\GameCreator\\Document\\LingChat\\.codex-worktrees\\vrm-mvp\\crates\\ling-chat-main\\src\\ai_service\\tts\\local\\adapter.rs",
+      "sha256": "4c1399ad2727d2d516dc71013c6c5d70fae6e36327cf283fc4ca4097461540cd",
+      "lastWriteUtc": "2026-10-17T06:27:28.5928949Z"
+    },
+    {
+      "path": "D:\\GameCreator\\Document\\LingChat\\.codex-worktrees\\vrm-mvp\\scripts\\check-touch-sound.mjs",
+      "sha256": "140c8e7ca1ed6f4c000fc77fb845016930077e1d45f31f04aa6639abd8c16acf",
+      "lastWriteUtc": "2026-10-29T13:34:35.6356660Z"
+    },
+    {
+      "path": "D:\\GameCreator\\Document\\LingChat\\.codex-worktrees\\vrm-mvp\\scripts\\check-touch-eyelids.mjs",
+      "sha256": "1d66e616ce23d94d55ec4aa1acd78b719d46978f5879da0fd3b2beb4d13fca64",
+      "lastWriteUtc": "2026-10-30T04:38:46.5106080Z"
+    },
+    {
+      "path": "D:\\GameCreator\\Document\\LingChat\\.codex-worktrees\\vrm-mvp\\scripts\\check-touch-reply-policy.mjs",
+      "sha256": "36f1a347448860fe0f133c7593275fca4f6bbe2c93ee81fefa8ae3232d0d3d0f",
+      "lastWriteUtc": "2026-10-30T03:44:31.9486705Z"
+    },
+    {
+      "path": "D:\\GameCreator\\Document\\LingChat\\.codex-worktrees\\vrm-mvp\\scripts\\check-vrm-touch-regions.mjs",
+      "sha256": "6f1d220033055efa9164db82b9f9ad1a6f0401dc3c881c77162cf99d68690571",
+      "lastWriteUtc": "2026-10-30T04:38:46.5538453Z"
+    },
+    {
+      "path": "D:\\GameCreator\\Document\\LingChat\\.codex-worktrees\\vrm-mvp\\scripts\\check-pointer-attention.mjs",
+      "sha256": "090c80dc52e430c6996bcb654f59a84c71d6f15e46ae62f6b5aacbd62c9d4e33",
+      "lastWriteUtc": "2026-10-29T13:41:33.8028746Z"
+    },
+    {
+      "path": "D:\\GameCreator\\Document\\LingChat\\.codex-worktrees\\vrm-mvp\\scripts\\check-pointer-relative-pose.mjs",
+      "sha256": "96978291287cd7cffa21e921f134172575d0e253400ff12a84d53d0bbcbb914b",
+      "lastWriteUtc": "2026-10-29T13:08:27.1366213Z"
+    },
+    {
+      "path": "D:\\GameCreator\\Document\\LingChat\\.codex-worktrees\\vrm-mvp\\scripts\\check-reaction-playback.mjs",
+      "sha256": "0e4c7d32cd791ba03fd61111453162b5d5dfb6fa80f09e9b5129b86a8d4e8754",
+      "lastWriteUtc": "2026-10-29T11:21:45.9103947Z"
+    },
+    {
+      "path": "D:\\GameCreator\\Document\\LingChat\\.codex-worktrees\\vrm-mvp\\.local\\interaction-stage1\\touch-config-checks.log",
+      "sha256": "04e871edb49bbf210cb6166492d2f879999121f7ff645e5374522b2974a4091e",
+      "lastWriteUtc": "2026-10-30T04:48:05.3087320Z"
+    },
+    {
+      "path": "D:\\GameCreator\\Document\\LingChat\\.codex-worktrees\\vrm-mvp\\.local\\interaction-stage1\\touch-config-storage.log",
+      "sha256": "bbc7d01f809ea97028553c25358b372e879cd380e4a4b862b7f7bb53fbf05b91",
+      "lastWriteUtc": "2026-10-30T04:46:26.6373594Z"
+    },
+    {
+      "path": "D:\\GameCreator\\Document\\DesktopSmallBlueFish\\docs\\Q1-EDITOR-BATCH-2026-10-29.md",
+      "sha256": "26bcc77201270e30fc1824b33acb409fe18d98fd378187ffed2023de5315b17c",
+      "lastWriteUtc": "2026-10-29T13:13:06.2963893Z"
+    },
+    {
+      "path": "D:\\GameCreator\\Document\\DesktopSmallBlueFish\\docs\\Q1-DROP-VIEW-FIX.md",
+      "sha256": "733296b443e7a3cdedbfa3a753023835bade3310cddd12c2566fe9cb86d5b191",
+      "lastWriteUtc": "2026-10-30T03:38:21.0528324Z"
+    },
+    {
+      "path": "D:\\GameCreator\\Document\\DesktopSmallBlueFish\\docs\\Q1-FOOTPRINT-TABLE-2026-10-30.md",
+      "sha256": "f1213ece52e16df60f8230f26b0788ca1b404212d2d4c090426c06e0d97fc576",
+      "lastWriteUtc": "2026-10-30T04:37:51.8927704Z"
+    },
+    {
+      "path": "D:\\GameCreator\\Document\\DesktopSmallBlueFish\\docs\\character-compatibility.md",
+      "sha256": "2e1265dfdca736bfa2afd0ab5a3979b7440ff87aeb7d0094ff914ef672e087ba",
+      "lastWriteUtc": "2026-10-29T12:48:05.7101718Z"
+    },
+    {
+      "path": "D:\\GameCreator\\Document\\DesktopSmallBlueFish\\LingChat-XR\\Assets\\LingChatXR\\Core\\PetInteraction.cs",
+      "sha256": "35e4c6f998ff85d24c4e0a561bf511735dd60ba4d7061f7aed1eaf6ef764e91b",
+      "lastWriteUtc": "2026-10-29T12:35:08.4380834Z"
+    },
+    {
+      "path": "D:\\GameCreator\\Document\\DesktopSmallBlueFish\\LingChat-XR\\Assets\\LingChatXR\\Runtime\\FeiyuAvatar.cs",
+      "sha256": "9783bddbc3dc7621f0f9c108b1d06e579625498aa18ceb33854203ce338d025d",
+      "lastWriteUtc": "2026-10-30T04:36:35.9078628Z"
+    },
+    {
+      "path": "D:\\GameCreator\\Document\\DesktopSmallBlueFish\\LingChat-XR\\Assets\\LingChatXR\\Runtime\\FeiyuPreview.cs",
+      "sha256": "4f337bdb6e3400760853030da9b1dd1f5b59a21925d6437b9c8ddb1464a902cf",
+      "lastWriteUtc": "2026-10-30T04:34:25.8307017Z"
+    },
+    {
+      "path": "D:\\GameCreator\\Document\\DesktopSmallBlueFish\\LingChat-XR\\Assets\\LingChatXR\\Runtime\\Speech\\XrSpeechController.cs",
+      "sha256": "35a533391b30b6b02997be7c5f9b5128ecf93edcaae8043704f0b95480f2a45f",
+      "lastWriteUtc": "2026-10-29T12:44:31.5657197Z"
+    },
+    {
+      "path": "D:\\GameCreator\\Document\\DesktopSmallBlueFish\\LingChat-XR\\Packages\\packages-lock.json",
+      "sha256": "6dad8c3e57f371e4d97e9f7f43a0526a5f546192c9c2e5cc1fe6efd237d208c2",
+      "lastWriteUtc": "2026-10-29T12:41:12.4641569Z"
+    },
+    {
+      "path": "D:\\GameCreator\\Document\\DesktopSmallBlueFish\\LingChat-XR\\Assets\\StreamingAssets\\Characters\\blue-placeholder\\model.vrm",
+      "sha256": "733f30dca19ec899eb6cfd3f69210ce9d5b13be52cbfc73475a280ad69cf3fc6",
+      "lastWriteUtc": "2026-10-29T12:44:12.1069569Z"
+    },
+    {
+      "path": "D:\\GameCreator\\Document\\DesktopSmallBlueFish\\LingChat-XR\\Library\\PackageCache\\com.vrmc.vrm@9b011104821b\\Runtime\\Components\\Vrm10Instance\\Vrm10Instance.cs",
+      "sha256": "e1c45cde027876671b45f61d0f148950afeb7c065828f3d1e6f2a263c5fd0754",
+      "lastWriteUtc": "2026-10-29T12:40:28.7392530Z"
+    },
+    {
+      "path": "D:\\GameCreator\\Document\\DesktopSmallBlueFish\\LingChat-XR\\Library\\PackageCache\\com.vrmc.vrm@9b011104821b\\Runtime\\Components\\Vrm10Runtime\\Springbone\\IVrm10SpringBoneRuntime.cs",
+      "sha256": "a52f0c5342c3668edd6f14a3e268d694e3262baf7cab207cfa07ee5621f5757e",
+      "lastWriteUtc": "2026-10-29T12:40:28.7584348Z"
+    },
+    {
+      "path": "D:\\方的世界\\LingChat-3D-prototype\\LINGCHAT-XR-SHARED-CAPABILITIES.md",
+      "sha256": "4c8a4ed9d528fd0890ee6110132546a611c42eb649142ba09546a5e8497ba65e",
+      "lastWriteUtc": "2026-10-29T13:43:14.9524868Z"
+    }
+  ]
+}

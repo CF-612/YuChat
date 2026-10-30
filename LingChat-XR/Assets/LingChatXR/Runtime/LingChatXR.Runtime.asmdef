@@ -1,0 +1,6 @@
+{
+  "name": "LingChatXR.Runtime",
+  "rootNamespace": "LingChatXR",
+  "references": ["LingChatXR.Core", "VRM10", "UniGLTF", "UniGLTF.Utils"],
+  "autoReferenced": true
+}

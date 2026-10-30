@@ -1,0 +1,7 @@
+{
+  "name": "LingChatXR.Core",
+  "rootNamespace": "LingChatXR.Core",
+  "references": [],
+  "autoReferenced": true,
+  "noEngineReferences": true
+}

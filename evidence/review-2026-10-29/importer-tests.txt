@@ -1,0 +1,82 @@
+TAP version 13
+# Subtest: YAML preserves false, null, empty arrays, none, quoted booleans and unknown values
+ok 1 - YAML preserves false, null, empty arrays, none, quoted booleans and unknown values
+  ---
+  duration_ms: 20.8086
+  type: 'test'
+  ...
+# Subtest: private source bytes remain outside the portable package; safe semantics are retained
+ok 2 - private source bytes remain outside the portable package; safe semantics are retained
+  ---
+  duration_ms: 18916.4073
+  type: 'test'
+  ...
+# Subtest: missing 3D without an explicit placeholder stays missing, with a portable manifest
+ok 3 - missing 3D without an explicit placeholder stays missing, with a portable manifest
+  ---
+  duration_ms: 13630.8811
+  type: 'test'
+  ...
+# Subtest: an explicit relative VRM binding is used; other resource-looking fields are not followed
+ok 4 - an explicit relative VRM binding is used; other resource-looking fields are not followed
+  ---
+  duration_ms: 20112.3653
+  type: 'test'
+  ...
+# Subtest: relative traversal, Windows absolute paths, drive-relative and ADS paths are rejected
+ok 5 - relative traversal, Windows absolute paths, drive-relative and ADS paths are rejected
+  ---
+  duration_ms: 26485.8621
+  type: 'test'
+  ...
+# Subtest: source, portable output and private records cannot overlap
+ok 6 - source, portable output and private records cannot overlap
+  ---
+  duration_ms: 11.7905
+  type: 'test'
+  ...
+# Subtest: symlink/junction resources cannot escape the source root
+ok 7 - symlink/junction resources cannot escape the source root
+  ---
+  duration_ms: 3259.4728
+  type: 'test'
+  ...
+# Subtest: model SHA mismatch and non-VRM bytes fail before output is written
+ok 8 - model SHA mismatch and non-VRM bytes fail before output is written
+  ---
+  duration_ms: 12269.4423
+  type: 'test'
+  ...
+# Subtest: repeat imports preserve local XR calibration; a new model SHA invalidates it
+ok 9 - repeat imports preserve local XR calibration; a new model SHA invalidates it
+  ---
+  duration_ms: 54557.4325
+  type: 'test'
+  ...
+# Subtest: existing output is not overwritten when it contains unowned files
+ok 10 - existing output is not overwritten when it contains unowned files
+  ---
+  duration_ms: 25141.5876
+  type: 'test'
+  ...
+# Subtest: source identity cannot be replaced by reusing an explicit character ID
+ok 11 - source identity cannot be replaced by reusing an explicit character ID
+  ---
+  duration_ms: 27160.4882
+  type: 'test'
+  ...
+# Subtest: explicit source rules and credits travel with the model and are hash-declared
+ok 12 - explicit source rules and credits travel with the model and are hash-declared
+  ---
+  duration_ms: 57591.2142
+  type: 'test'
+  ...
+1..12
+# tests 12
+# suites 0
+# pass 12
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 259725.2465

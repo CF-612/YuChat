@@ -1,0 +1,177 @@
+{
+  "success": true,
+  "command": "editor-modules",
+  "data": [
+    {
+      "id": "visualstudio",
+      "name": "Microsoft Visual Studio Community 2022",
+      "category": "DEV_TOOL",
+      "status": "可用",
+      "download": "1.58 GB",
+      "installed": "1.59 GB",
+      "cmd": "--productId \"Microsoft.VisualStudio.Product.Community\" --add \"Microsoft.VisualStudio.Workload.ManagedGame\" --add \"Microsoft.VisualStudio.Workload.NativeDesktop\" --add \"Microsoft.VisualStudio.Component.VC.Tools.x86.x64\" --add \"Microsoft.VisualStudio.Component.Windows10SDK.16299\" --campaign \"Unity3d_Unity\" --passive --norestart --wait"
+    },
+    {
+      "id": "documentation",
+      "name": "Documentation",
+      "category": "DOCUMENTATION",
+      "status": "可用",
+      "download": "448.47 MB",
+      "installed": "914.87 MB"
+    },
+    {
+      "id": "language-ja",
+      "name": "日本語",
+      "category": "LANGUAGE_PACK",
+      "status": "可用",
+      "download": "2.8 MB",
+      "installed": "2.8 MB"
+    },
+    {
+      "id": "language-zh-hans",
+      "name": "简体中文",
+      "category": "LANGUAGE_PACK",
+      "status": "可用",
+      "download": "2.44 MB",
+      "installed": "2.44 MB"
+    },
+    {
+      "id": "language-zh-hant",
+      "name": "繁體中文",
+      "category": "LANGUAGE_PACK",
+      "status": "可用",
+      "download": "2.44 MB",
+      "installed": "2.44 MB"
+    },
+    {
+      "id": "language-ko",
+      "name": "한국어",
+      "category": "LANGUAGE_PACK",
+      "status": "可用",
+      "download": "2.65 MB",
+      "installed": "2.65 MB"
+    },
+    {
+      "id": "android",
+      "name": "Android Build Support",
+      "category": "PLATFORM",
+      "status": "已安装",
+      "download": "1.45 GB",
+      "installed": "6.45 GB"
+    },
+    {
+      "id": "android-sdk-ndk-tools",
+      "name": "Android SDK & NDK Tools",
+      "category": "PLATFORM",
+      "status": "已安装",
+      "download": "141.14 MB",
+      "installed": "165.94 MB"
+    },
+    {
+      "id": "ios",
+      "name": "iOS Build Support",
+      "category": "PLATFORM",
+      "status": "可用",
+      "download": "531.8 MB",
+      "installed": "2.25 GB"
+    },
+    {
+      "id": "linux-il2cpp",
+      "name": "Linux Build Support (IL2CPP)",
+      "category": "PLATFORM",
+      "status": "可用",
+      "download": "56.62 MB",
+      "installed": "208.87 MB"
+    },
+    {
+      "id": "linux-mono",
+      "name": "Linux Build Support (Mono)",
+      "category": "PLATFORM",
+      "status": "可用",
+      "download": "55.16 MB",
+      "installed": "196.75 MB"
+    },
+    {
+      "id": "linux-server",
+      "name": "Linux Dedicated Server Build Support",
+      "category": "PLATFORM",
+      "status": "可用",
+      "download": "152.79 MB",
+      "installed": "555.29 MB"
+    },
+    {
+      "id": "mac-mono",
+      "name": "Mac Build Support (Mono)",
+      "category": "PLATFORM",
+      "status": "可用",
+      "download": "495.12 MB",
+      "installed": "2.11 GB"
+    },
+    {
+      "id": "mac-server",
+      "name": "Mac Dedicated Server Build Support",
+      "category": "PLATFORM",
+      "status": "可用",
+      "download": "491.42 MB",
+      "installed": "2.08 GB"
+    },
+    {
+      "id": "android-open-jdk-17.0.9+9",
+      "name": "OpenJDK",
+      "category": "PLATFORM",
+      "status": "已安装",
+      "download": "112.25 MB",
+      "installed": "227.32 MB"
+    },
+    {
+      "id": "appletv",
+      "name": "tvOS Build Support",
+      "category": "PLATFORM",
+      "status": "可用",
+      "download": "522.18 MB",
+      "installed": "2.21 GB"
+    },
+    {
+      "id": "universal-windows-platform",
+      "name": "Universal Windows Platform Build Support",
+      "category": "PLATFORM",
+      "status": "可用",
+      "download": "417.33 MB",
+      "installed": "2.16 GB"
+    },
+    {
+      "id": "visionos",
+      "name": "visionOS Build Support",
+      "category": "PLATFORM",
+      "status": "可用",
+      "download": "247.51 MB",
+      "installed": "1.06 GB"
+    },
+    {
+      "id": "webgl",
+      "name": "Web Build Support",
+      "category": "PLATFORM",
+      "status": "可用",
+      "download": "910.56 MB",
+      "installed": "4.13 GB"
+    },
+    {
+      "id": "windows-il2cpp",
+      "name": "Windows Build Support (IL2CPP)",
+      "category": "PLATFORM",
+      "status": "可用",
+      "download": "247.91 MB",
+      "installed": "861.2 MB"
+    },
+    {
+      "id": "windows-server",
+      "name": "Windows Dedicated Server Build Support",
+      "category": "PLATFORM",
+      "status": "可用",
+      "download": "447.2 MB",
+      "installed": "1.7 GB"
+    }
+  ],
+  "errors": [],
+  "warnings": []
+}
