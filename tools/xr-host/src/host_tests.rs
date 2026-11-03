@@ -24,7 +24,7 @@ async fn fixture(replies:Vec<&str>,voice:Arc<VoiceFixture>)->Shared {
     let client=Arc::new(LlmClient::new(config,reqwest::Client::new(),Box::new(TextFixture{replies:std::sync::Mutex::new(replies.into_iter().map(String::from).collect())})));
     let root=std::env::temp_dir().join(format!("xr-host-test-{}",Uuid::new_v4()));tokio::fs::create_dir_all(root.join("audio")).await.unwrap();
     let mut sessions=HashMap::new();
-    for role in ["feiyu","ling-demo"] {sessions.insert(role.into(),Session{id:role.into(),role_id:role.into(),generation:1,history:vec![],sentences:vec![],events:vec![],busy:true});}
+    for role in ["feiyu","ling-demo"] {sessions.insert(role.into(),Session{id:role.into(),role_id:role.into(),generation:1,history:vec![],sentences:vec![],events:vec![],cancel:None,busy:true});}
     Arc::new(Host{voice_queue:Default::default(),token:"fixture-only".into(),root,llm:RwLock::new(client.clone()),settings_path:None,translator:Translator::new(Arc::new(RwLock::new(Some(client))),true),voice,sessions:Mutex::new(sessions)})
 }
 fn request()->Turn {Turn{session_id:"feiyu".into(),text:"".into(),retry_turn:"".into(),retry_index:0,test_voice:false,director:false,available:vec![],style:"normal".into(),previous_pose:String::new()}}
@@ -170,4 +170,29 @@ async fn full_voice_queue_rejects_overflow_and_skips_cancelled_jobs() {
     synthesize(&h,"feiyu",2,"new",&mut next,false).await;
     assert_eq!(voice.calls.load(Ordering::SeqCst),1);
     assert!(!next.audio_file.is_empty());
+}
+
+#[tokio::test]
+async fn stopping_blocked_turn_releases_voice_lane_for_next_turn() {
+    let gate=Arc::new(Notify::new());
+    let voice=Arc::new(VoiceFixture{calls:AtomicUsize::new(0),fail_first:false,gate:Some(gate.clone())});
+    let h=fixture(vec![],voice.clone()).await;
+    h.sessions.lock().await.get_mut("feiyu").unwrap().busy=false;
+    let mut headers=HeaderMap::new();
+    headers.insert("authorization","Bearer fixture-only".parse().unwrap());
+    for expected in 1..=3 {
+        let mut req=request();req.test_voice=true;
+        let _=turn(State(h.clone()),headers.clone(),Json(req)).await.unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(3),async {
+            while voice.calls.load(Ordering::SeqCst)<expected {tokio::task::yield_now().await;}
+        }).await.unwrap();
+        if expected<3 {
+            let _=stop(State(h.clone()),headers.clone(),Json(OpenSession{session_id:"feiyu".into(),after:0})).await.unwrap();
+        } else {gate.notify_one();}
+    }
+    tokio::time::timeout(std::time::Duration::from_secs(3),async {
+        while h.sessions.lock().await["feiyu"].busy {tokio::task::yield_now().await;}
+    }).await.unwrap();
+    let all=h.sessions.lock().await;
+    assert_eq!(all["feiyu"].events.iter().filter(|e|e.kind=="audio").count(),1);
 }

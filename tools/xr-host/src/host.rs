@@ -16,7 +16,7 @@ pub struct History { pub speaker:String, pub text:String }
 pub struct Event { pub cursor:usize, pub session_id:String, pub role_id:String, pub turn_id:String, pub generation:u64, pub index:usize, pub kind:String, pub message:String, pub audio_file:String, pub emotion:String, pub motion:String, #[serde(default)] pub stage_action:Option<crate::stage_action::Decision>, #[serde(default)] pub stage_request_id:String }
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all="camelCase")]
-pub struct Session { pub id:String, pub role_id:String, pub generation:u64, pub history:Vec<History>, pub sentences:Vec<Sentence>, #[serde(skip)] pub events:Vec<Event>, #[serde(skip)] pub busy:bool }
+pub struct Session { pub id:String, pub role_id:String, pub generation:u64, pub history:Vec<History>, pub sentences:Vec<Sentence>, #[serde(skip)] pub events:Vec<Event>, #[serde(skip)] pub busy:bool, #[serde(skip)] cancel:Option<tokio::sync::oneshot::Sender<()>> }
 pub struct VoiceQueue { slots:tokio::sync::Semaphore, engine:Mutex<()> }
 impl Default for VoiceQueue {
     fn default()->Self {Self{slots:tokio::sync::Semaphore::new(8),engine:Mutex::new(())}}
@@ -58,7 +58,7 @@ pub async fn open(State(h):State<Shared>,headers:HeaderMap,Json(req):Json<Open>)
     if req.role_id!="feiyu" && req.role_id!="ling-demo" {return Err((StatusCode::BAD_REQUEST,"Unknown role"));}
     let mut all=h.sessions.lock().await;
     let id=all.values().find(|s|s.role_id==req.role_id).map(|s|s.id.clone()).unwrap_or_else(||Uuid::new_v4().to_string());
-    let s=all.entry(id.clone()).or_insert_with(||Session{id,role_id:req.role_id,generation:0,history:vec![],sentences:vec![],events:vec![],busy:false});
+    let s=all.entry(id.clone()).or_insert_with(||Session{id,role_id:req.role_id,generation:0,history:vec![],sentences:vec![],events:vec![],cancel:None,busy:false});
     Ok(Json(json!({"sessionId":s.id,"roleId":s.role_id,"generation":s.generation,"history":s.history,"cursor":s.events.last().map_or(0,|e|e.cursor)})))
 }
 #[derive(Deserialize)] #[serde(rename_all="camelCase")]
@@ -75,13 +75,23 @@ pub async fn turn(State(h):State<Shared>,headers:HeaderMap,Json(req):Json<Turn>)
     let g=s.generation; let id=s.id.clone(); let role=s.role_id.clone(); let history=s.history.clone();
     let turn=Uuid::new_v4().to_string();
     if retry.is_none()&&!req.test_voice {s.history.push(History{speaker:"user".into(),text:req.text.clone()});}
+    let (cancel,stopped)=tokio::sync::oneshot::channel();
+    s.cancel=Some(cancel);
     drop(all);let answer=json!({"turnId":turn,"generation":g});
-    tokio::spawn(async move {run(h.clone(),id.clone(),g,turn.clone(),role,history,req,retry).await;h.finish(&id,g,&turn).await;});
+    tokio::spawn(async move {
+        tokio::select! {
+            biased;
+            _=stopped=>{},
+            _=run(h.clone(),id.clone(),g,turn.clone(),role,history,req,retry)=>{},
+        }
+        h.finish(&id,g,&turn).await;
+    });
     Ok(Json(answer))
 }
 pub async fn stop(State(h):State<Shared>,headers:HeaderMap,Json(req):Json<OpenSession>)->ApiResult {
     auth(&h,&headers)?; let mut all=h.sessions.lock().await;
     let s=all.get_mut(&req.session_id).ok_or((StatusCode::NOT_FOUND,"Session missing"))?;
+    if let Some(cancel)=s.cancel.take(){let _=cancel.send(());}
     s.generation+=1;s.busy=false;Ok(Json(json!({"generation":s.generation})))
 }
 #[derive(Deserialize)] #[serde(rename_all="camelCase")]
@@ -149,12 +159,12 @@ async fn run(h:Shared,id:String,g:u64,turn:String,role:String,history:Vec<Histor
             if !matches!(output,Ok(Ok(()))) {h.event(&id,g,&turn,0,"error","对话服务失败，已生成的内容保留","").await;}
         };
         let consumer=async {
-            let mut decision_task=None;
+            let mut decisions=tokio::task::JoinSet::new();
             while let Some(mut sentence)=rx.recv().await {
                 if !h.current(&id,g).await {break;}
                 if sentence.index==0&&req.director&&!req.available.is_empty() {
                     let host=h.clone();let session=id.clone();let turn=turn.clone();let user=req.text.clone();let speech=sentence.message.clone();let motion=sentence.motion.clone();let available=req.available.clone();let style=req.style.clone();let previous=req.previous_pose.clone();
-                    decision_task=Some(tokio::spawn(async move {
+                    decisions.spawn(async move {
                         let client=host.llm.read().await.clone();
                         let decision=crate::stage_action::select(&client,&user,&speech,&motion,&available,&style,&previous).await;
                         let mut all=host.sessions.lock().await;
@@ -162,11 +172,11 @@ async fn run(h:Shared,id:String,g:u64,turn:String,role:String,history:Vec<Histor
                             let cursor=s.events.last().map_or(1,|e|e.cursor+1);
                             s.events.push(Event{cursor,session_id:session,role_id:s.role_id.clone(),turn_id:turn.clone(),generation:g,index:0,kind:"stageAction".into(),message:String::new(),audio_file:String::new(),emotion:String::new(),motion:String::new(),stage_action:Some(decision),stage_request_id:format!("{turn}:0")});
                         }
-                    }));
+                    });
                 }
                 synthesize(&h,&id,g,&turn,&mut sentence,replay).await;
             }
-            if let Some(task)=decision_task {let _=task.await;}
+            let _=decisions.join_next().await;
         };
         tokio::join!(producer,consumer);
     }
