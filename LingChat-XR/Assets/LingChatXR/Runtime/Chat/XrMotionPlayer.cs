@@ -135,7 +135,11 @@ namespace LingChatXR.Chat
         }
         const string WelcomeWave="wave_normal_right_661";
         bool explicitPermissions;
-        bool AllowedForOwner(string id,string owner) => Preferences.Allowed(id) ||
+        bool AllowedForOwner(string id,string owner) =>
+#if UNITY_EDITOR
+            owner=="prototype" ||
+#endif
+            Preferences.Allowed(id) ||
             (owner=="welcome" && id==WelcomeWave && !explicitPermissions);
         public Task<bool> Welcome() => Busy ? Task.FromResult(false) : PlayInternal(WelcomeWave,false,"welcome");
         public void EndWelcome(){CancelPending("welcome");if(bodyOwner=="welcome"&&action!=null)Stop(true);}

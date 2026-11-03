@@ -22,9 +22,25 @@ namespace LingChatXR.Chat
         public bool PlayingPackage => action!=null&&action.generated;
 
         // Candidate assets are authoring previews. They never enter the automatic chat director.
-        public async Task<bool> PreviewPackage(string folder)
+        public Task<bool> PreviewPackage(string folder)=>LoadPackage(folder,false);
+#if UNITY_EDITOR
+        // 仅在隔离实验中调用；请求发出时记录动作代次。
+        public async Task<bool> TryGeneratedPrototype(Task<string> result)
         {
-            if(!PreviewMode||disposed||!spatialAllowed||GrabbedActive||LocomotionActive)return false;
+            int ticket=++generation;
+            Loading=false;pendingOwner=null;
+            try
+            {
+                string folder=await result;
+                if(disposed||ticket!=generation||!spatialAllowed||GrabbedActive||LocomotionActive)return false;
+                return await LoadPackage(folder,true);
+            }
+            catch(Exception e){if(!disposed&&ticket==generation)PackageLastError=e.Message;return false;}
+        }
+#endif
+        async Task<bool> LoadPackage(string folder,bool prototype)
+        {
+            if((!PreviewMode&&!prototype)||disposed||!spatialAllowed||GrabbedActive||LocomotionActive)return false;
             int ticket=++generation;Loading=true;PackageLastError=null;
             try
             {
@@ -42,7 +58,7 @@ namespace LingChatXR.Chat
                     throw new InvalidDataException("未知的身体起始姿态校准方式");
                 var id="package_"+header.bodySha256.ToLowerInvariant()+"_"+(header.posePolicy??"absolute");
                 var asset=new XrMotionAsset{id=id,label="视频身体动作候选",sha256=header.bodySha256};
-                return await PlayInternal(id,false,"package",asset,folder,header);
+                return await PlayInternal(id,false,prototype?"prototype":"package",asset,folder,header);
             }
             catch(OperationCanceledException){return false;}
             catch(Exception e){if(!disposed&&ticket==generation){PackageLastError=e.Message;Status="动作包校验失败，保留当前待机";}return false;}

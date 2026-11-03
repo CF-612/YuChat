@@ -174,9 +174,45 @@ namespace LingChatXR.Editor
                 Check(fish.TouchCompression>.001f,"xr-hand-downward-press-"+folder);
                 Pose(crown+Vector3.up*.4f);until=Time.unscaledTime+1;while(fish.TouchSession.Active&&Time.unscaledTime<until)yield return null;
                 Check(!fish.TouchSession.Active&&fish.TouchSession.CompletedCount==endCount+1,"xr-leave-ends-one-stroke-"+folder);
+                var generated=Environment.GetEnvironmentVariable("XR_HYBRID_PACKAGE");
+                var modelPlayer=fish.Motions;
+                System.Threading.Tasks.TaskCompletionSource<string> delayed=null;
+                System.Threading.Tasks.Task<bool> lateResult=null;
+                void CaptureHybrid(string phase)
+                {
+                    if(Environment.GetEnvironmentVariable("XR_HYBRID_CAPTURE")!="1")return;
+                    var obj=new GameObject("生成动作实验固定机位");
+                    try
+                    {
+                        var cam=obj.AddComponent<Camera>();cam.orthographic=true;cam.orthographicSize=fish.HeightMeters*.85f;
+                        cam.nearClipPlane=.005f;cam.clearFlags=CameraClearFlags.SolidColor;cam.backgroundColor=new Color(.1f,.16f,.22f);
+                        var center=fish.transform.position+Vector3.up*fish.HeightMeters*.48f;
+                        cam.transform.position=center+fish.transform.forward*.65f+fish.transform.right*.15f;
+                        cam.transform.LookAt(center);
+                        Alpha2Probe.Capture(cam,Path.Combine(Output,folder+"-"+phase+".png"));
+                    }
+                    finally{UnityEngine.Object.Destroy(obj);}
+                }
+                if(!string.IsNullOrEmpty(generated))
+                {
+                    yield return null;yield return null;
+                    var playing=modelPlayer.TryGeneratedPrototype(System.Threading.Tasks.Task.FromResult(generated));
+                    while(!playing.IsCompleted)yield return null;
+                    Check(playing.Result&&modelPlayer.PlayingPackage,"生成动作从现有姿态接管-"+folder+" "+core.State+" "+modelPlayer.Status+" "+modelPlayer.PackageLastError);
+                    for(int sample=0;sample<5;sample++)yield return null;
+                    CaptureHybrid("1-generated");
+                    delayed=new System.Threading.Tasks.TaskCompletionSource<string>();
+                    lateResult=modelPlayer.TryGeneratedPrototype(delayed.Task);
+                }
                 var target=crown;
                 Pose(target);for(int i=0;i<8;i++)yield return null;
                 Pose(target,true);for(int i=0;i<5;i++)yield return null;Check(core.State==PetState.Held,"near-hand-pinch-grabs-through-xri-"+folder);
+                if(delayed!=null)
+                {
+                    CaptureHybrid("2-grab-interrupt");
+                    delayed.SetResult(generated);while(!lateResult.IsCompleted)yield return null;
+                    Check(!lateResult.Result&&!modelPlayer.PlayingPackage&&modelPlayer.GrabbedActive,"抓取打断并拒绝晚到结果-"+folder);
+                }
                 Pose(target,false);yield return null;Pose(target,true);yield return null;
                 Check(core.State==PetState.Held,"捏合短暂抖动后仍提住-"+folder);
                 Pose(target+Vector3.up*.3f,true);for(int i=0;i<5;i++)yield return null;Check(core.Position.Y>1.3f,"hand-lifts-character-"+folder);
@@ -225,6 +261,18 @@ namespace LingChatXR.Editor
                 Check(Quaternion.Angle(entry.Preview.SpatialRotation,manualRotation)<1,"release-preserves-manual-heading-"+folder);
                 float preserveUntil=Time.unscaledTime+1.2f;Pose(target+Vector3.up*.5f);while(Time.unscaledTime<preserveUntil)yield return null;
                 Check(Quaternion.Angle(entry.Preview.SpatialRotation,manualRotation)<1,"idle-does-not-immediately-undo-wrist-heading-"+folder);
+                if(delayed!=null)
+                {
+                    var failed=modelPlayer.TryGeneratedPrototype(System.Threading.Tasks.Task.FromException<string>(new IOException("模拟服务不可用")));
+                    while(!failed.IsCompleted)yield return null;
+                    Check(!failed.Result&&!modelPlayer.PlayingPackage&&core.State==PetState.Idle,"放下后失败维持待机-"+folder);
+                    CaptureHybrid("3-landed-fallback");
+                    var resumed=modelPlayer.TryGeneratedPrototype(System.Threading.Tasks.Task.FromResult(generated));
+                    while(!resumed.IsCompleted)yield return null;
+                    Check(resumed.Result&&modelPlayer.PlayingPackage,"放下后新请求重新接管-"+folder);
+                    yield return null;CaptureHybrid("4-recovered");
+                    modelPlayer.Stop(true);
+                }
                 Pose(entry.Preview.Avatar.TouchProxy.bounds.center);float touchDeadline=Time.unscaledTime+.15f;while(Time.unscaledTime<touchDeadline)yield return null;Check(core.State==PetState.Touched,"bare-hand-near-head-touch-"+folder);
                 Pose(target,false,false);for(int i=0;i<4;i++)yield return null;Check(core.State!=PetState.Touched&&core.State!=PetState.Held,"hand-tracking-loss-cancels-interaction-"+folder);
                 Pose(target,false,true,true);for(int i=0;i<4;i++)yield return null;Check(!entry.RightBareHand.CanPinch,"system-gesture-does-not-select-"+folder);
