@@ -48,7 +48,7 @@ namespace LingChatXR.Chat
         readonly Dictionary<HumanBodyBones,Transform> controlBones=new Dictionary<HumanBodyBones,Transform>();
         readonly HashSet<string> decisions=new HashSet<string>();
         readonly HashSet<string> turnActions=new HashSet<string>();
-        string headId,headOwner,bodyOwner="manual",turnId;
+        string headId,headOwner,pendingOwner,bodyOwner="manual",turnId;
         float headAge,poseExitAge=-1,nextDailyAt,lastAudioTime;
         long audioKey=-1;int dailyCue;bool semanticBlocked;
         float speechTime;bool talking,waiting;XrVoiceRhythm rhythm;
@@ -138,7 +138,7 @@ namespace LingChatXR.Chat
         bool AllowedForOwner(string id,string owner) => Preferences.Allowed(id) ||
             (owner=="welcome" && id==WelcomeWave && !explicitPermissions);
         public Task<bool> Welcome() => Busy ? Task.FromResult(false) : PlayInternal(WelcomeWave,false,"welcome");
-        public void EndWelcome(){if(bodyOwner=="welcome"&&(action!=null||Loading))Stop(true);}
+        public void EndWelcome(){CancelPending("welcome");if(bodyOwner=="welcome"&&action!=null)Stop(true);}
         public Task<bool> Play(string id)=>PlayInternal(id,false);
         bool Compatible(XrMotionAsset a)=>a.poseLoop==null||(a.approvedModels!=null&&a.approvedModels.Contains(modelSha));
         static MotionRegion Regions(XrMotionAsset asset)
@@ -161,7 +161,7 @@ namespace LingChatXR.Chat
                 headId=id;headAge=0;headOwner=owner;Status="动作播放中 · "+asset.label;return true;
             }
             if(asset.loop)return await SetIdle(id);
-            int ticket=++generation;Loading=true;bodyOwner=owner;Status="正在准备动作…";
+            int ticket=++generation;Loading=true;pendingOwner=owner;Status="正在准备动作…";
             try
             {
                 var clip=await Load(asset,folder,package);
@@ -180,7 +180,7 @@ namespace LingChatXR.Chat
             }
             catch(OperationCanceledException){return false;}
             catch(Exception e){if(package!=null)PackageLastError=e.Message;if(!disposed&&ticket==generation)Status="该动作暂不能播放，已保留当前姿态";return false;}
-            finally{if(ticket==generation)Loading=false;}
+            finally{if(ticket==generation){Loading=false;pendingOwner=null;}}
         }
         public async Task<bool> SetIdle(string id)
         {
@@ -218,7 +218,7 @@ namespace LingChatXR.Chat
         {
             if(disposed)return;
             EndLocomotion(immediate);
-            ++generation;Loading=false;
+            ++generation;Loading=false;pendingOwner=null;
             headId=null;headOwner=null;
             if(!immediate&&action!=null&&activeAsset.poseLoop!=null&&age>=activeAsset.poseLoop.enterEnd&&poseExitAge<0){poseExitAge=0;Status="正在退出姿势";return;}
             if(action!=null&&!immediate){Snapshot(entry);releaseHipsY=hips.localPosition.y;cancelDuration=XrMotionTransition.CancelDuration(XrMotionTransition.PoseDuration(entry,frameBase,boneRegions,Regions(activeAsset),XrMotionTransition.Minimum,.75f));releasing=true;releaseAge=0;Status="正在收势，回到当前待机";}
@@ -226,13 +226,21 @@ namespace LingChatXR.Chat
             if(immediate){idle=null;idleAsset=null;idleFading=false;Write(rest);Snapshot(lastBody);conversation.Reset();semanticBlocked=true;}
         }
         public void CancelSpeech(){CancelOwner("speech");semanticBlocked=true;}
+        void CancelPending(string owner)
+        {
+            if(!Loading || pendingOwner!=owner)return;
+            ++generation;
+            Loading=false;
+            pendingOwner=null;
+        }
         void CancelOwner(string owner)
         {
+            CancelPending(owner);
             if(headOwner==owner){headId=null;headOwner=null;}
-            if(bodyOwner==owner&&(action!=null||Loading))
+            if(bodyOwner==owner&&action!=null)
             {string keep=headId,keepOwner=headOwner;float keepAge=headAge;Stop();headId=keep;headOwner=keepOwner;headAge=keepAge;}
         }
-        public void BeginTurn(string id){if(PoseId==null)CancelOwner("director");CancelOwner("speech");turnId=id;decisions.Clear();turnActions.Clear();semanticBlocked=Preferences.director;}
+        public void BeginTurn(string id){CancelPending("director");if(PoseId==null)CancelOwner("director");CancelOwner("speech");turnId=id;decisions.Clear();turnActions.Clear();semanticBlocked=Preferences.director;}
         public void EndTurn(){turnId=null;decisions.Clear();turnActions.Clear();CancelOwner("director");CancelOwner("speech");semanticBlocked=true;}
         public async Task<bool> Decide(string turn,string request,string id)
         {
@@ -241,7 +249,7 @@ namespace LingChatXR.Chat
             if(id=="none"){CancelOwner("director");CancelOwner("speech");return true;}
             if(!Capabilities().Any(a=>a.id==id)||(!turnActions.Add(id)&&PoseId!=id))return false;
             if(PoseId==id&&bodyOwner=="director")return true;
-            if((action!=null||Loading)&&bodyOwner=="manual"||headId!=null&&headOwner=="manual")return false;
+            if((action!=null&&bodyOwner=="manual"||pendingOwner=="manual")||headId!=null&&headOwner=="manual")return false;
             CancelOwner("speech");
             bool result=await PlayInternal(id,true,"director");
             // 资源返回后仍核对轮次；模型销毁和空间打断另由 generation 拒绝。

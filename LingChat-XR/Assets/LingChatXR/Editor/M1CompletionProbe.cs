@@ -97,7 +97,20 @@ namespace LingChatXR.Editor
                 player.BeginTurn("pose-a");var play=player.Decide("pose-a","pose-request",pose.id);while(!play.IsCompleted)yield return null;Check(play.Result,"declared-pose-enter-"+folder);
                 for(int i=0;i<600;i++)player.Step(1f/60);
                 Check(player.PoseId==pose.id,"declared-pose-holds-without-last-frame-freeze-"+folder);
-                player.BeginTurn("pose-b");Check(player.PoseId==pose.id,"new-turn-keeps-current-director-pose-"+folder);
+                var gate=(System.Threading.SemaphoreSlim)typeof(XrMotionPlayer)
+                    .GetField("loadGate",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic).GetValue(player);
+                var lockTask=gate.WaitAsync();while(!lockTask.IsCompleted)yield return null;
+                System.Threading.Tasks.Task<bool> late;
+                try
+                {
+                    late=player.Decide("pose-a","delayed-action","wave_normal_right_661");
+                    Check(!late.IsCompleted,"director-load-blocked-with-pose-"+folder);
+                    player.BeginTurn("pose-b");
+                }
+                finally{gate.Release();}
+                while(!late.IsCompleted)yield return null;
+                Check(!late.Result&&player.PoseId==pose.id,"late-director-cannot-replace-retained-pose-"+folder);
+                Check(player.PoseId==pose.id,"new-turn-keeps-current-director-pose-"+folder);
                 var keep=player.Decide("pose-b","keep",pose.id);Check(keep.Result&&player.PoseId==pose.id,"repeated-pose-continues-"+folder);
                 var end=player.Decide("pose-b","exit","none");Check(end.Result,"explicit-none-exits-own-pose-"+folder);
                 player.Step(100);Check(player.PoseId==null&&player.ActiveId==null,"declared-pose-exits-"+folder);
