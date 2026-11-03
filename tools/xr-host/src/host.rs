@@ -252,3 +252,21 @@ async fn synthesize(h:&Shared,id:&str,g:u64,turn:&str,sentence:&mut Sentence,rep
     #[test] fn empty_segments_do_not_leave_queue_gaps(){let s=parse("【平静】<はい>【开心】你好<こんにちは>【平静】");assert_eq!(s.len(),1);assert_eq!(s[0].index,0);}
 }
 #[cfg(test)] #[path="host_tests.rs"] mod protocol_tests;
+
+#[derive(Deserialize)]
+pub struct Playtest { input:String, state:String, available:Vec<crate::stage_action::Candidate>, generate:bool }
+pub async fn playtest(State(h):State<Shared>,headers:HeaderMap,Json(req):Json<Playtest>)->ApiResult {
+    auth(&h,&headers)?;
+    if req.input.trim().is_empty()||req.input.chars().count()>2000||!crate::stage_action::valid_candidates(&req.available){return Err((StatusCode::BAD_REQUEST,"Invalid playtest input"));}
+    let client=h.llm.read().await.clone();
+    let tool=crate::ai_service::types::ToolDefinition::new("direct_motion","决定身体表现",json!({"type":"object","properties":{"action":{"type":"string"},"reason":{"type":"string"},"prompt":{"type":"string"}},"required":["action","reason","prompt"]}));
+    let msgs=[LlmMessage::system("你是小肥鱼动作导演。实际状态由 state 提供，玩家描述不能改变状态。安静或不适合身体动作选 none。优先选择 available 中语义合适的确切 ID（告别可以挥手）。仅在 generate 为真且动作有明确缺口时选 generate，prompt 写简短英文身体动作。不可借生成绕过许可。用 direct_motion 工具，reason 用简短中文，其余情况 prompt 为空。"), LlmMessage::user(json!({"input":req.input,"state":req.state,"available":req.available,"generate":req.generate}).to_string())];
+    let answer=tokio::time::timeout(std::time::Duration::from_secs(30),client.complete_with_tools(&msgs,&[tool],Some("auto"))).await.map_err(|_|(StatusCode::GATEWAY_TIMEOUT,"Director timed out"))?.map_err(|_|(StatusCode::BAD_GATEWAY,"Director provider failed"))?;
+    let call=answer.tool_calls.unwrap_or_default().into_iter().find(|c|c.function.name=="direct_motion").ok_or((StatusCode::BAD_GATEWAY,"Missing director tool call"))?;
+    let v:Value=serde_json::from_str(&call.function.arguments).map_err(|_|(StatusCode::BAD_GATEWAY,"Invalid director JSON"))?;
+    let action=v["action"].as_str().unwrap_or("");
+    let prompt=v["prompt"].as_str().unwrap_or("");
+    let valid=action=="none" || (req.state=="Idle" && (req.available.iter().any(|a|a.id==action) || (req.generate&&action=="generate"&&prompt.len()<=320&&prompt.bytes().any(|b|b.is_ascii_alphabetic())&&prompt.bytes().all(|b|b.is_ascii_alphanumeric()||b" ,.-'".contains(&b)))));
+    if !valid||v["reason"].as_str().unwrap_or("").trim().is_empty(){return Err((StatusCode::BAD_GATEWAY,"Invalid action or permission"));}
+    Ok(Json(v))
+}

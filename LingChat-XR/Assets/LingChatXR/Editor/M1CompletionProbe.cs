@@ -118,6 +118,37 @@ namespace LingChatXR.Editor
                 player.ApplyPreferences(new XrMotionPreferences());Check(!player.Busy,"permissions-off-"+folder);
                 avatar.FreezePresentation=false;
             }
+            if(Environment.GetEnvironmentVariable("XR_DIRECTOR_LIVE")=="1")
+            {
+                var change=live.SwitchCharacterAsync("local-smallbluefish-alpha2");while(!change.IsCompleted)yield return null;
+                live.Place(Vector3.zero);yield return null;yield return null;
+                var motions=live.Avatar.Motions;
+                var prefs=new XrMotionPreferences{enabled=true,director=true};
+                foreach(var item in motions.Catalog)prefs.items[item.id]=true;
+                motions.ApplyPreferences(prefs);
+                var window=ScriptableObject.CreateInstance<DirectorPlaytestWindow>();
+                var results=new JArray();
+                try{
+                    foreach(string text in new[]{"我要走啦，下次见。","陪我安静待一会儿，先别动。","请蹲下，双手假装捡起一个大箱子，再慢慢站起来。"}){
+                        window.ProbeInput=text;var job=window.Run(live,0);while(!job.IsCompleted)yield return null;job.GetAwaiter().GetResult();
+                        results.Add(new JObject{["input"]=text,["selected"]=window.Selected,["executed"]=window.Executed,["cache"]=window.CachedPackage});
+                        File.WriteAllText(Path.Combine(Evidence,"director-live.json"),results.ToString());
+                    }
+                    Check(window.Selected=="generate"&&motions.PlayingPackage,"real-director-to-t2m-playback");
+                    var cachedPackage=window.CachedPackage;
+                    var replay=window.Run(live,1);while(!replay.IsCompleted)yield return null;
+                    Check(window.CachedPackage==cachedPackage&&window.Executed.StartsWith("缓存重播"),"real-cache-replay");
+                    var reroll=window.Run(live,2);while(!reroll.IsCompleted)yield return null;
+                    Check(window.CachedPackage!=cachedPackage&&motions.PlayingPackage,"same-intent-new-generated-package");
+                    var late=window.Run(live,0);
+                    live.Interaction.BeginGrab("playtest-hand",out var holdToken);live.RefreshSpatialState();
+                    typeof(DirectorPlaytestWindow).GetMethod("OnInspectorUpdate",System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Instance).Invoke(window,null);
+                    while(!late.IsCompleted)yield return null;
+                    Check(!motions.PlayingPackage&&window.Executed.Contains("过期"),"late-live-director-yields-to-held");
+                    live.Interaction.ReleaseGrabWithDescent("playtest-hand",holdToken,live.Interaction.LastSafePosition);
+                    live.RefreshSpatialState();
+                }finally{UnityEngine.Object.DestroyImmediate(window);}
+            }
             var chat=UnityEngine.Object.FindAnyObjectByType<XrChatController>();
             var queue=(LingChatXR.Core.DialogueQueue)typeof(XrChatController).GetField("queue",System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Instance).GetValue(chat);
             foreach(var failure in new[]{"translation","synthesis"})
