@@ -115,7 +115,7 @@ namespace LingChatXR.Editor
                 var end=player.Decide("pose-b","exit","none");Check(end.Result,"explicit-none-exits-own-pose-"+folder);
                 player.Step(100);Check(player.PoseId==null&&player.ActiveId==null,"declared-pose-exits-"+folder);
                 pose.poseLoop=null;pose.loop=oldLoop;pose.approvedModels=oldApproved;
-                player.ApplyPreferences(new XrMotionPreferences());Check(!player.Busy,"permissions-off-"+folder);
+                player.ApplyPreferences(new XrMotionPreferences{enabled=false});Check(!player.Busy,"permissions-off-"+folder);
                 avatar.FreezePresentation=false;
             }
             if(Environment.GetEnvironmentVariable("XR_DIRECTOR_LIVE")=="1")
@@ -123,8 +123,11 @@ namespace LingChatXR.Editor
                 var change=live.SwitchCharacterAsync("local-smallbluefish-alpha2");while(!change.IsCompleted)yield return null;
                 live.Place(Vector3.zero);yield return null;yield return null;
                 var motions=live.Avatar.Motions;
-                var prefs=new XrMotionPreferences{enabled=true,director=true};
-                foreach(var item in motions.Catalog)prefs.items[item.id]=true;
+                var prefs=new XrMotionPreferences();
+                Check(prefs.enabled&&prefs.director&&prefs.automatic&&prefs.conversation,"fresh-permissions-on");
+                prefs.items["nod"]=false;
+                Check(!prefs.Allowed("nod")&&prefs.Allowed("wave_normal_right_661"),"explicit-exclusion-only");
+                prefs.items.Clear();
                 motions.ApplyPreferences(prefs);
                 var window=ScriptableObject.CreateInstance<DirectorPlaytestWindow>();
                 var results=new JArray();

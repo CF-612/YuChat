@@ -175,7 +175,7 @@ namespace LingChatXR.Chat
             if(usage=="speaking"){Toggle(controls,"允许自动穿插说话素材",draft.automatic,v=>draft.automatic=v);Text(controls,"跟随实际人声的句间节奏；已有动作与手部互动优先，明确拒绝动作时不自动补动作。","motion-muted");}
             var sources=Box(controls,"motion-row");Button(sources,"角色原生（0）",()=>{source="native";Render();});Button(sources,"通用动作（"+catalog.Count(a=>!a.loop)+"）",()=>{source="generic";Render();});
             var group=catalog.Where(a=>!a.loop&&source=="generic"&&a.Speaking==(usage=="speaking")&&(scope=="all"||a.MatchesStyle(draft.style))).ToArray();
-            Text(controls,"本组 "+group.Count(a=>draft.items.TryGetValue(a.id,out bool value)&&value)+" / "+group.Length+" 已启用","motion-muted");
+            Text(controls,"本组 "+group.Count(a=>draft.ItemEnabled(a.id))+" / "+group.Length+" 已启用","motion-muted");
             var search=new TextField{value=query};search.AddToClassList("motion-search");search.label="搜索本组";controls.Add(search);
             var list=new VisualElement();
             void Rows()
@@ -183,7 +183,7 @@ namespace LingChatXR.Chat
                 list.Clear();foreach(var item in group.Where(a=>string.IsNullOrEmpty(query)||a.label.Contains(query)||a.id.IndexOf(query,StringComparison.OrdinalIgnoreCase)>=0))
                 {
                     var row=Box(list,"motion-item");var line=Box(row,"motion-row");
-                    Toggle(line,item.label,draft.items.TryGetValue(item.id,out bool value)&&value,v=>draft.items[item.id]=v);
+                    Toggle(line,item.label,draft.ItemEnabled(item.id),v=>draft.items[item.id]=v);
                     Button(line,"预览",()=>{library=false;SelectAction(item.id,true);});
                     Text(row,item.Speaking?"说话素材 · "+item.style:"场景动作 · "+item.style,"motion-muted");
                 }

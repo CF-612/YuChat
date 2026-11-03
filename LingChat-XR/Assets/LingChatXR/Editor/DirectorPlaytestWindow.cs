@@ -23,6 +23,12 @@ namespace LingChatXR.Editor
         Vector2 scroll;
         [MenuItem("YuChat/动作实验/自然语言导演试玩")]
         static void Open()=>GetWindow<DirectorPlaytestWindow>("小肥鱼动作导演");
+        public static void LaunchPlaytest()
+        {
+            UnityEditor.SceneManagement.EditorSceneManager.OpenScene(PreviewProject.ScenePath);
+            Open();
+            EditorApplication.EnterPlaymode();
+        }
         static FeiyuPreview Live=>UnityEngine.Object.FindAnyObjectByType<FeiyuPreview>();
         static JObject Connection()=>JObject.Parse(File.ReadAllText(Path.Combine(Root,".cache/xr-host-connection.json")));
         async void OnEnable(){
@@ -58,6 +64,14 @@ namespace LingChatXR.Editor
                 var player=live.Avatar.Motions;
                 EditorGUILayout.LabelField("实际状态",live.Interaction.State.ToString());
                 if(!live.Interaction.PlaneConfirmed && GUILayout.Button("放置到桌面中心"))live.Place(Vector3.zero);
+                if((!player.Preferences.enabled||!player.Preferences.director||!player.Preferences.automatic||!player.Preferences.conversation||player.Preferences.items.ContainsValue(false))&&GUILayout.Button("恢复默认许可（全部开启）"))
+                {
+                    var prefs=player.Preferences;
+                    prefs.enabled=prefs.director=prefs.automatic=prefs.conversation=true;
+                    prefs.items.Clear();
+                    prefs.Save(live.Avatar.Package.model.sha256);
+                    player.ApplyPreferences(prefs);
+                }
                 input=EditorGUILayout.TextArea(input,GUILayout.MinHeight(48));
                 if(GUILayout.Button("让导演决定"))_=Run(live,0);
                 if(GUILayout.Button("停止")){revision++;watching=false;player.Stop();outcome="玩家已停止，待返回请求已过期";}

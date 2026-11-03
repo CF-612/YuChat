@@ -36,11 +36,12 @@ namespace LingChatXR.Chat
     }
     public sealed class XrMotionPreferences
     {
-        public bool enabled,automatic;
-        public bool conversation=true,director;
+        public bool enabled=true,automatic=true;
+        public bool conversation=true,director=true;
         public string style="normal",idle="none";
         public Dictionary<string,bool> items=new Dictionary<string,bool>();
-        public bool Allowed(string id)=>enabled&&items!=null&&items.TryGetValue(id,out bool value)&&value;
+        public bool ItemEnabled(string id)=>!string.IsNullOrEmpty(id)&&(items==null||!items.TryGetValue(id,out bool value)||value);
+        public bool Allowed(string id)=>enabled&&ItemEnabled(id);
         public static string PathFor(string sha)=>Path.Combine(Environment.GetEnvironmentVariable("XR_PREFERENCES_DIRECTORY")??Application.persistentDataPath,"xr-motion-"+sha+".json");
         public static XrMotionPreferences Read(string sha)
         {

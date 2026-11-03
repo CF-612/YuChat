@@ -99,7 +99,7 @@ namespace LingChatXR.Editor
                 preferences.items["wave_normal_right_661"]=true;wave=player.Play("wave_normal_right_661");while(!wave.IsCompleted)yield return null;player.CancelSpeech();
                 Check(player.ActiveId=="wave_normal_right_661","speech-cancel-preserves-manual-owner-"+folder);
                 preferences.Save(avatar.Package.model.sha256);Check(XrMotionPreferences.Read(avatar.Package.model.sha256).Allowed("wave_normal_right_661"),"model-bound-motion-preferences-save-"+folder);
-                player.ApplyPreferences(new XrMotionPreferences());
+                player.ApplyPreferences(new XrMotionPreferences{enabled=false});
                 // 独立窗口：原角色实例、空间、许可均不能因试播改变。
                 view.MotionWindow.Open();while(view.MotionWindow.PreviewAvatar==null)yield return null;
                 var clone=view.MotionWindow.PreviewAvatar;Check(clone!=avatar&&preview.Avatar==avatar,"isolated-preview-avatar-"+folder);
