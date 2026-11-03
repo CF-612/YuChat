@@ -1,0 +1,45 @@
+diff --git a/comfyui_gem_x/models.py b/comfyui_gem_x/models.py
+index fd10325..79d97fe 100644
+--- a/comfyui_gem_x/models.py
++++ b/comfyui_gem_x/models.py
+@@ -6,15 +6,18 @@ from a .part file and are checked by size (and SHA256 where pinned).
+ """
+ 
+ import hashlib
++import os
+ from pathlib import Path
+ import shutil
+ import sys
+ import urllib.request
+ import zipfile
+ 
+-HF_GEM = "https://huggingface.co/nvidia/GEM-X/resolve/main/"
++GEM_REVISION = os.environ.get("GEM_X_GEM_REVISION", "5b9a69d5ed4713ac4ba2a63b335e66db87279a3e")
++HF_GEM = f"https://huggingface.co/nvidia/GEM-X/resolve/{GEM_REVISION}/"
+ MS_GEM = "https://modelscope.cn/models/nv-community/GEM-X/resolve/master/"
+-HF_SOMA = "https://huggingface.co/nvidia/SOMA-X/resolve/main/"
++SOMA_REVISION = os.environ.get("GEM_X_SOMA_REVISION", "f81a01796f652260ff930d5318d6c6b845a505ed")
++HF_SOMA = f"https://huggingface.co/nvidia/SOMA-X/resolve/{SOMA_REVISION}/"
+ MS_SOMA = "https://modelscope.cn/models/nv-community/SOMA-X/resolve/master/"
+ # The locked SOMA code needs these two files from this commit; newer releases changed
+ # the SOMA_neutral.npz layout, so they come from the pinned Git LFS objects.
+@@ -23,13 +26,17 @@ SOMA_PINNED = ("https://media.githubusercontent.com/media/NVlabs/SOMA-X/"
+ YOLOX_ZIP = ("https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/"
+              "yolox_x_8xb8-300e_humanart-a39d44ed.zip")
+ 
++for _revision in (GEM_REVISION, SOMA_REVISION):
++    if len(_revision) != 40 or any(c not in "0123456789abcdef" for c in _revision):
++        raise ValueError("GEM-X requires immutable 40-character revisions")
++
+ 
+ def _gem(name, dest, size):
+-    return dest, [HF_GEM + name, MS_GEM + name], size, None
++    return dest, [HF_GEM + name], size, None
+ 
+ 
+ def _soma(name, size):
+-    return f"soma_assets/{name}", [HF_SOMA + name, MS_SOMA + name], size, None
++    return f"soma_assets/{name}", [HF_SOMA + name], size, None
+ 
+ 
+ # dest (relative to models/gem_x), mirrors, size in bytes, sha256

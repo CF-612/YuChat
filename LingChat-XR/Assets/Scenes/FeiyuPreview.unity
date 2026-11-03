@@ -149,7 +149,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: LingChatXR.Runtime::LingChatXR.FeiyuPreview
   previewCamera: {fileID: 623080859}
-  characterFolder: blue-placeholder
+  characterFolder: local-smallbluefish-alpha2
 --- !u!4 &102773997
 Transform:
   m_ObjectHideFlags: 0

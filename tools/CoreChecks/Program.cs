@@ -9,12 +9,19 @@ internal static class Program
     {
         try
         {
+            GravityRelease();
+            PointGesture();
+            SizeEditing();
+            RotatedSurface();
+            DialogueTyping();
             PlacementAndDefaultMovement();
             TenGrabReleaseCycles();
             InvalidReleaseAndInput();
             OwnershipAndStaleCommands();
             TouchAndGrabPriority();
             TrackingLossAndReset();
+            DialogueOrdering();
+            ControlledDescent();
             Console.WriteLine($"PASS: {checks} behavior assertions; no Unity, headset, visual or frame-time claims.");
             return 0;
         }
@@ -25,11 +32,136 @@ internal static class Program
         }
     }
 
+    private static void RotatedSurface()
+    {
+        foreach(float angle in new[]{0f,(float)Math.PI/4,(float)Math.PI/2,-(float)Math.PI/3})
+        {
+            var center=new Vec3(.6f,1.1f,.55f);var pet=new PetInteraction(.04f);
+            Vec3 Point(float x,float z,float y=0)=>new Vec3(center.X+(float)(x*Math.Cos(angle)+z*Math.Sin(angle)),center.Y+y,center.Z+(float)(-x*Math.Sin(angle)+z*Math.Cos(angle)));
+            Check(pet.ConfirmPlane(center,.6f,.2f,center,angle),"rotated surface accepts center");
+            Check(pet.ContainsFootprint(Point(.5f,.1f),.04f),"rotated footprint inside");
+            Check(!pet.ContainsFootprint(Point(.58f,0),.04f),"rotated width edge rejected");
+            Check(!pet.ContainsFootprint(Point(0,.18f),.04f),"rotated depth edge rejected");
+            pet.SetAutonomousEnabled(true);Check(pet.TryMoveAutonomous(Point(.5f,.1f),pet.Generation),"autonomy uses rotated bounds");
+            Check(!pet.TryResizeFootprint(.11f),"rotated resize respects near edge");
+            Check(pet.BeginGrab("hand",out int token)&&pet.MoveGrab("hand",token,Point(.4f,0,.4f)),"grab above rotated table");
+            Check(pet.ReleaseGrabWithDescent("hand",token,Point(.4f,0))&&pet.LastReleaseWasValid,"rotated descent contact valid");
+            for(int i=0;i<100&&pet.State!=PetState.Idle;i++)pet.StepDescent(.02f,pet.Generation);
+            Equal(pet.Position,Point(.4f,0),"rotated descent preserves world landing");
+            Check(!pet.ConfirmPlane(center,.6f,.2f,center,float.NaN),"nonfinite rotation rejected");
+        }
+    }
+    private static void PointGesture()
+    {
+        var dwell=new PointDwell();var goal=new Vec3(.2f,.74f,.1f);int sent=0;
+        for(int i=0;i<10;i++)if(dwell.Step(true,goal,.05f,out _))sent++;Check(sent==0,"brief pointing does not command movement");
+        for(int i=0;i<60;i++)if(dwell.Step(true,goal,.05f,out _))sent++;Check(sent==1,"stable pointing confirms once, holding does not repeat");
+        dwell.Step(false,goal,.05f,out _);for(int i=0;i<20;i++)if(dwell.Step(true,goal,.05f,out _))sent++;Check(sent==1,"single missing frame does not rearm pointing");
+        for(int i=0;i<5;i++)dwell.Step(false,goal,.05f,out _);for(int i=0;i<20;i++)if(dwell.Step(true,goal,.05f,out _))sent++;Check(sent==2,"release then point re-arms");
+        dwell.Reset();for(int i=0;i<100;i++)Check(!dwell.Step(true,new Vec3(i%2==0?0:.03f,.74f,0),.05f,out _),"moving target never confirms");
+        dwell.Reset();for(int i=0;i<50;i++)Check(!dwell.Step(true,new Vec3(float.NaN,0,0),.05f,out _),"nonfinite pointer rejected");
+    }
+
+    private static void SizeEditing()
+    {
+        var pet=new PetInteraction(.04f);Check(!pet.TryResizeFootprint(.06f),"unplaced resize rejected");
+        Check(pet.ConfirmPlane(default,.4f,.3f,new Vec3(.34f,0,0)),"resize plane");
+        Check(!pet.TryResizeFootprint(.07f)&&pet.RadiusMeters==.04f,"growth crossing edge rejected without mutation");
+        Vec3 position=pet.Position;Check(pet.TryResizeFootprint(.05f),"valid growth");Equal(pet.Position,position,"resize preserves world position");
+        Check(!pet.TryResizeFootprint(float.NaN)&&!pet.TryResizeFootprint(0),"invalid radius rejected");
+        Check(pet.BeginGrab("mouse",out _),"grab resized pet");Check(!pet.TryResizeFootprint(.03f),"held resize rejected");
+        pet.Suspend();Check(!pet.TryResizeFootprint(.03f),"suspended resize rejected");
+    }
+    private static void GravityRelease()
+    {
+        foreach (int fps in new[] {30, 60, 90})
+        {
+            var pet = Placed(); pet.BeginGrab("hand", out int g);
+            pet.MoveGrab("hand", g, new Vec3(0, 1.75f, 0));
+            pet.ReleaseGrabWithDescent("hand", g, new Vec3(0, .75f, 0));
+            Check(pet.Position.Y == 1.75f, "release must preserve airborne position");
+            for (int i=0;i<fps/5;i++) pet.StepDescent(1f/fps, pet.Generation);
+            Check(Math.Abs(pet.Position.Y - (1.75f - .5f*9.81f*.2f*.2f)) < .002f,
+                "gravity must fall 19.62 cm after 0.2 s, not tween or teleport; actual=" + pet.Position.Y);
+        }
+    }
+    private static void DialogueTyping()
+    {
+        var writer=new DialoguePresentation();
+        Check(writer.Text==""&&!writer.Typing,"no text before presentation begins");
+        writer.Start("你好，小肥鱼！");Check(writer.Text=="你"&&writer.Typing,"audio start reveals only first character");
+        writer.Step(.01);Check(writer.Text=="你","normal speed must not reveal full sentence in one frame");
+        writer.Finish();Check(writer.Text=="你好，小肥鱼！"&&!writer.Typing,"first click finishes whole sentence");
+        writer.Start("今天开心吗？",true);Check(writer.Text.StartsWith("你好，小肥鱼！ 今")&&writer.Typing,"merged short sentence appends instead of erasing");
+        writer.Cancel();writer.Step(10);Check(writer.Text==""&&!writer.Typing,"cancel rejects late typewriter ticks");
+        writer.Start("🐟你好");Check(writer.Text=="🐟","do not split surrogate pair");
+        for(int i=0;i<300;i++)writer.Step(.01);Check(writer.Text=="🐟你好"&&!writer.Typing,"typing completes naturally");
+    }
+
+    private static void DialogueOrdering()
+    {
+        var q = new DialogueQueue();
+        q.Begin("session", "fish", "turn", 2);
+        Check(!q.Add("session", "fish", "turn", 1, new DialogueQueue.Cue { Index = 0 }), "reject late generation");
+        Check(!q.Add("session", "other", "turn", 2, new DialogueQueue.Cue { Index = 0 }), "reject other role");
+        Check(q.Add("session", "fish", "turn", 2, new DialogueQueue.Cue { Index = 1, Text = "second" }), "buffer out of order");
+        Check(q.Take() == null, "never play second before first");
+        Check(q.Add("session", "fish", "turn", 2, new DialogueQueue.Cue { Index = 0, Text = "first" }), "accept first");
+        Check(!q.Add("session", "fish", "turn", 2, new DialogueQueue.Cue { Index = 0 }), "deduplicate audio");
+        Check(q.Take().Text == "first", "first subtitle stays paired");
+        Check(q.Take() == null, "no overlapping voice");
+        q.End(); Check(!q.Empty, "stream end is not speech end");
+        q.Complete(); Check(q.Take().Text == "second", "advance only after completion");
+        q.Complete(); Check(q.Empty && q.Ended, "finished playback queue");
+        q.Cancel(); Check(!q.Add("session", "fish", "turn", 2, new DialogueQueue.Cue { Index = 2 }), "cancel rejects delayed audio");
+        q.Begin("new-session", "other", "new-turn", 3);
+        Check(q.Empty && !q.Ended, "switch clears old queue");
+        q.End(); Check(q.Empty && q.Ended, "empty final completes");
+    }
+
     private static PetInteraction Placed()
     {
         var pet = new PetInteraction();
         Check(pet.ConfirmPlane(new Vec3(0, 0.75f, 0), 0.4f, 0.3f, new Vec3(0, 0.75f, 0)), "confirm fixture plane");
         return pet;
+    }
+
+    private static void ControlledDescent()
+    {
+        foreach (int fps in new[] { 30, 60, 90 })
+        {
+            var p = Placed(); p.SetAutonomousEnabled(true);
+            for (int cycle = 0; cycle < 10; cycle++)
+            {
+                Check(p.BeginGrab("hand", out int grab), "grab before descent");
+                float x = cycle % 2 == 0 ? .1f : -.1f;
+                p.MoveGrab("hand", grab, new Vec3(x, 1.25f, 0));
+                Check(p.ReleaseGrabWithDescent("hand", grab, new Vec3(x, .75f, 0)), "start controlled release");
+                Check(p.Position.Y == 1.25f && p.State == PetState.Descending, "release has no teleport or early idle");
+                Check(!p.BeginTouch("touch"), "touch does not steal descent");
+                Check(!p.TryMoveAutonomous(new Vec3(0,.75f,0),p.Generation), "no walk while descending");
+                float previousY = p.Position.Y; int trajectory = p.Generation; int ticks = 0; bool settled = false;
+                while (p.State != PetState.Idle && ticks++ < fps * 3)
+                {
+                    Check(p.StepDescent(1f / fps, trajectory), "step owns trajectory");
+                    Check(p.Position.Y >= .75f - .000001f && p.Position.Y <= previousY + .000001f, "monotonic descent without penetration");
+                    if (p.State == PetState.Settling) settled = true;
+                    previousY = p.Position.Y;
+                }
+                Check(settled && p.State == PetState.Idle && p.Position.Equals(new Vec3(x,.75f,0)), "contact settling then exact idle");
+            }
+            p.BeginGrab("hand", out int g); p.MoveGrab("hand", g, new Vec3(0,1.1f,0));
+            p.ReleaseGrabWithDescent("hand", g, new Vec3(0,.75f,0)); int old = p.Generation;
+            p.StepDescent(.1f, old); Vec3 mid = p.Position;
+            Check(p.BeginGrab("new-hand", out int newer) && p.Position.Equals(mid), "regrab during descent has no jump");
+            Check(!p.StepDescent(.1f,old) && !p.MoveGrab("hand",g,new Vec3(0,2,0)), "old trajectory and old hand rejected");
+            p.MoveGrab("new-hand",newer,new Vec3(.1f,1,0));p.ReleaseGrabWithDescent("new-hand",newer,new Vec3(.39f,.75f,0));
+            Check(p.State==PetState.Descending&&!p.LastReleaseWasValid,"invalid footprint returns continuously, never teleports");
+            for(int i=0;i<100;i++) p.StepDescent(1f/fps,p.Generation);
+            p.BeginGrab("hand",out g);p.MoveGrab("hand",g,new Vec3(0,1,0));p.ReleaseGrabWithDescent("hand",g,new Vec3(0,.75f,0));old=p.Generation;
+            Check(!p.StepDescent(float.NaN,old),"invalid delta rejected");p.Suspend();
+            Check(!p.StepDescent(.1f,old)&&!p.PlaneConfirmed,"space loss cancels descent");
+        }
     }
 
     private static void PlacementAndDefaultMovement()

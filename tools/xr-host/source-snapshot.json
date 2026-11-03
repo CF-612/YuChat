@@ -1,0 +1,47 @@
+[
+  {
+    "source": "crates/ling-chat-main/src/ai_service/tts/local/engine.rs",
+    "sha256": "a67400e5fa975becc33704ecfbd528631f486d5778898278cd544fe51e8ca33f",
+    "target": "src/ai_service/tts/local/engine.rs"
+  },
+  {
+    "source": "crates/ling-chat-main/src/ai_service/tts/local/adapter.rs",
+    "sha256": "4c1399ad2727d2d516dc71013c6c5d70fae6e36327cf283fc4ca4097461540cd",
+    "target": "src/ai_service/tts/local/adapter.rs"
+  },
+  {
+    "source": "crates/ling-chat-main/src/ai_service/tts/provider.rs",
+    "sha256": "1bf3320cf58b86d684cc71def5ee974855f77f9bc72f8e0de3ed0d040f870b21",
+    "target": "src/ai_service/tts/provider.rs"
+  },
+  {
+    "source": "crates/ling-chat-main/src/ai_service/llm/provider.rs",
+    "sha256": "19bbf8a8d4c8cb8711c2a52665421637164020947bb77839375b1b610d4e5dee",
+    "target": "src/ai_service/llm/provider.rs"
+  },
+  {
+    "source": "crates/ling-chat-main/src/ai_service/llm/providers/genai_provider.rs",
+    "sha256": "4374375158f04d27c909c0b689ebe785f0a5ac9d1a7377f75b9235562f91aed5",
+    "target": "src/ai_service/llm/providers/genai_provider.rs"
+  },
+  {
+    "source": "crates/ling-chat-main/src/ai_service/llm/mod.rs",
+    "sha256": "5ee5e6d0eb52e6553adc3e46faf72a2df3154468005dca2c960f9a6d8f86866b",
+    "target": "src/ai_service/llm/mod.rs"
+  },
+  {
+    "source": "crates/ling-chat-main/src/ai_service/translator.rs",
+    "sha256": "3447f42e21186929b9973ec0e1422bbd3cd31d483bc700867d87b91ae9bbeacd",
+    "target": "src/ai_service/translator.rs"
+  },
+  {
+    "source": "crates/ling-chat-main/src/ai_service/types.rs",
+    "sha256": "d0d7ea83f71f00414d5cd8841dbbbac2c79157dfc13adc11310bcc6eaa9d78fe",
+    "target": "src/ai_service/types.rs"
+  },
+  {
+    "source": "crates/ling-chat-main/src/ai_service/message_system/processor.rs",
+    "sha256": "4e646ffc23a4cdf6fcf53faac90e9a4cc38c3d79f1864a96338dd90ecb107a87",
+    "target": "src/ai_service/message_system/processor.rs"
+  }
+]

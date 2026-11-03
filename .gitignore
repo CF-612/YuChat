@@ -6,8 +6,12 @@ LingChat-XR/[Uu]ser[Ss]ettings/
 LingChat-XR/*.csproj
 LingChat-XR/*.sln
 LingChat-XR/Assets/StreamingAssets/Characters/local-*/
+LingChat-XR/Assets/StreamingAssets/Characters/local-*.meta
 Builds/
 .cache/
+.r1-unity-validation/
+LingChat-XR/Assets/LingChatXR/Resources/LocalLingChatEffects/
+LingChat-XR/Assets/LingChatXR/Resources/LocalLingChatEffects.meta
 **/bin/
 **/obj/
 **/node_modules/
@@ -20,6 +24,8 @@ Builds/
 *.pem
 *.key
 .local/
+**/StreamingAssets/Motions/local-*/
+**/StreamingAssets/Motions/local-*.meta
 .vs/
 .idea/
 .vscode/
@@ -43,3 +49,6 @@ evidence/**/*.mp4
 evidence/**/*.wav
 evidence/**/*.so
 evidence/unity6-smoke-failure.txt
+
+# User-provided grabbed animation: local use only.
+LingChat-XR/Assets/StreamingAssets/Motions/local-grab/

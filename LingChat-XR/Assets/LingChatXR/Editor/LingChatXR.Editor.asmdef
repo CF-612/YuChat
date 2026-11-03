@@ -1,7 +1,7 @@
 {
   "name": "LingChatXR.Editor",
   "rootNamespace": "LingChatXR.Editor",
-  "references": ["LingChatXR.Runtime", "LingChatXR.Core", "VRM10"],
+  "references": ["LingChatXR.Runtime", "LingChatXR.Core", "LingChatXR.XR", "Unity.XR.Interaction.Toolkit.Samples.SpatialKeyboard", "Unity.XR.Hands", "Unity.XR.ARFoundation", "Unity.XR.ARSubsystems", "Unity.XR.Management", "Unity.XR.Management.Editor", "Unity.XR.OpenXR", "Unity.XR.OpenXR.Editor", "Unity.XR.Interaction.Toolkit", "Unity.InputSystem", "Unity.ugui", "VRM10", "VRM10.MToon10", "FastSpringBone10", "SpringBoneJobs", "Unity.Mathematics", "Unity.Collections", "UniGLTF", "UniGLTF.Utils", "lilToon.Editor", "Unity.Newtonsoft.Json"],
   "includePlatforms": ["Editor"],
   "autoReferenced": true
 }

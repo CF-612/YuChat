@@ -1,0 +1,159 @@
+.dialogue { position: absolute; left: 0; right: 0; bottom: 0; height: 280px; }
+.dialogue-expand { position: absolute; right: 28px; bottom: 22px; border-radius: 18px; background-color: rgba(4,17,38,.6); padding-left: 14px; padding-right: 16px; }
+.dialogue-content { position: absolute; left: 15%; right: 15%; top: 57px; bottom: 20px; }
+.heading { flex-direction: row; align-items: center; height: 42px; margin-bottom: 8px; }
+.character-name { font-size: 25px; -unity-font-style: bold; color: white; margin-right: 18px; }
+.character-subtitle { font-size: 16px; color: rgb(110,180,255); }
+.spacer { flex-grow: 1; }
+.status { font-size: 13px; color: rgba(175,214,245,.75); margin-right: 14px; max-width: 250px; white-space: normal; }
+.narrow .character-subtitle { display: none; }
+.divider { height: 1px; flex-shrink: 0; background-color: rgba(34,211,238,.16); overflow: hidden; }
+.divider-light { height: 1px; width: 28%; margin-left: 12%; background-color: rgba(34,211,238,.48); }
+.speech { flex-grow: 1; margin-top: 17px; margin-bottom: 17px; }
+.subtitle { font-size: 24px; -unity-font-style: bold; color: rgb(248,250,255); white-space: normal; -unity-paragraph-spacing: 7px; }
+.subtitle-flow { flex-direction: row; flex-wrap: wrap; }
+.subtitle-char { font-size: 22px; -unity-font-style: normal; color: rgb(248,250,255); margin: 0; padding: 0; white-space: pre; }
+.motion { font-size: 21px; color: rgb(156,163,175); white-space: normal; margin-top: 8px; }
+.walk-toolbar { position: absolute; top: 20px; right: 24px; flex-direction: row; align-items: center; padding: 8px 16px; border-radius: 22px; background-color: rgba(17,30,44,.72); border-width: 1px; border-color: rgba(133,194,217,.28); }
+.walk-hint { color: rgb(184,211,226); font-size: 15px; margin-right: 10px; }
+.waiting { font-size: 23px; color: rgba(220,235,255,.65); }
+.emotion { font-size: 19px; color: rgb(255,119,221); margin-left: 16px; }
+.thinking-bubble { position: absolute; width: 110px; height: 110px; -unity-background-scale-mode: scale-to-fit; }
+.auto-on { color: rgb(4,188,255); background-color: rgba(4,188,255,.1); }
+.compose { height: 45px; flex-shrink: 0; flex-direction: row; align-items: center; border-top-width: 1px; border-top-color: rgba(255,255,255,.08); padding-top: 6px; }
+.field { flex-grow: 1; height: 40px; }
+.chat-input { flex-grow: 1; font-size: 20px; margin: 0; padding: 0; background-color: transparent; }
+.chat-input > .unity-text-field__input { color: white; background-color: transparent; border-width: 0; padding: 8px 0; margin: 0; }
+.chat-input:focus { border-bottom-width: 1px; border-bottom-color: rgba(110,180,255,.5); }
+.placeholder { position: absolute; left: 0; top: 7px; font-size: 20px; color: rgba(222,235,251,.45); }
+.input-hint { font-size: 12px; color: rgba(210,230,255,.35); margin-left: 14px; margin-right: 10px; }
+.nav { height: 36px; min-width: 36px; flex-direction: row; align-items: center; justify-content: center; border-width: 0; border-radius: 8px; padding: 7px 10px; margin: 0 0 0 8px; background-color: transparent; color: rgba(231,242,255,.83); }
+.nav:hover { color: rgb(110,180,255); background-color: rgba(255,255,255,.06); }
+.nav:active { background-color: rgba(110,180,255,.12); }
+.nav:disabled { opacity: .3; }
+.line-icon { width: 22px; height: 22px; flex-shrink: 0; }
+.nav-text { font-size: 15px; margin-left: 7px; }
+.send { color: rgb(4,188,255); }
+.send:hover { color: rgb(136,255,251); }
+.reconnect { align-self: flex-end; }
+.floating-panel { position: absolute; background-color: rgba(4,17,38,.96); border-radius: 16px; border-width: 1px; border-color: rgba(167,208,250,.14); padding: 24px 30px; }
+.history-panel { left: 22%; right: 22%; top: 9%; bottom: 335px; }
+.panel-heading { flex-direction: row; align-items: center; margin-bottom: 17px; }
+.panel-title { font-size: 23px; -unity-font-style: bold; }
+.history-scroll { flex-grow: 1; margin-top: 8px; }
+.history-row { padding: 17px 0; border-bottom-width: 1px; border-bottom-color: rgba(255,255,255,.06); }
+.user-name, .assistant-name { font-size: 16px; -unity-font-style: bold; margin-bottom: 7px; }
+.user-name { color: rgb(255,119,221); }
+.assistant-name { color: rgb(110,180,255); }
+.history-body { font-size: 19px; white-space: normal; color: rgba(245,248,255,.92); }
+.empty-history { margin-top: 30px; font-size: 18px; color: rgba(223,236,255,.5); }
+.sound-panel { right: 15%; bottom: 290px; width: 290px; }
+.quiet-label { font-size: 15px; color: rgba(222,235,251,.6); margin-bottom: 10px; }
+.volume { height: 25px; margin-bottom: 15px; }
+.volume .unity-base-slider__tracker { background-color: rgba(110,180,255,.25); height: 3px; }
+.volume .unity-base-slider__dragger { background-color: rgb(155,211,255); border-width: 0; border-radius: 7px; width: 12px; height: 12px; }
+.audition { align-self: flex-start; margin-left: -10px; }
+.settings-overlay { position: absolute; left: 0; right: 0; top: 0; bottom: 0; background-color: rgba(2,8,20,.5); align-items: center; justify-content: center; }
+.settings-shell { width: 1180px; max-width: 94%; height: 770px; max-height: 94%; background-color: rgba(16,27,43,.97); border-radius: 16px; border-width: 1px; border-color: rgba(185,215,244,.18); overflow: hidden; }
+.settings-top { padding: 20px 34px 12px; flex-direction: row; align-items: center; }
+.settings-eyebrow { font-size: 19px; color: rgb(121,217,255); margin-right: 24px; }
+.settings-title { font-size: 21px; color: rgb(242,248,255); flex-grow: 1; }
+.settings-close { width: 34px; height: 34px; font-size: 26px; color: rgb(180,201,221); background-color: transparent; border-width: 0; }
+.settings-close:hover { color: white; background-color: rgba(255,255,255,.06); }
+.settings-main { flex-direction: column; flex-grow: 1; min-height: 0; }
+.settings-rail { flex-direction: row; flex-shrink: 0; border-bottom-width: 1px; border-bottom-color: rgba(180,210,240,.12); margin: 0 34px; padding: 0 0 4px; }
+.settings-tab { height: 45px; flex-grow: 1; margin: 0 18px 0 0; padding: 9px 18px; border-width: 0; border-radius: 0; background-color: transparent; color: rgb(174,193,217); font-size: 16px; -unity-text-align: middle-center; }
+.settings-tab:hover { background-color: rgba(126,185,255,.08); }
+.settings-tab.selected { background-color: transparent; color: rgb(121,217,255); border-bottom-width: 3px; border-bottom-color: rgb(121,217,255); }
+.settings-rail-note { white-space: normal; font-size: 12px; color: rgb(105,128,157); margin: 27px 14px 0; }
+.settings-body { flex-grow: 1; padding: 24px 52px 12px; }
+.settings-section-title { font-size: 23px; -unity-font-style: bold; color: rgb(239,246,255); margin-bottom: 8px; }
+.settings-description { font-size: 14px; white-space: normal; color: rgb(146,168,194); margin: 5px 0 12px; }
+.settings-card { background-color: rgba(147,197,255,.045); border-radius: 12px; border-width: 1px; border-color: rgba(147,197,255,.1); padding: 16px 19px; margin-top: 9px; margin-bottom: 13px; }
+.settings-card-title { font-size: 17px; color: rgb(209,231,255); margin-bottom: 5px; }
+.settings-body .unity-base-field { margin: 7px 0; min-height: 30px; font-size: 15px; color: rgb(215,229,247); }
+.settings-body .unity-base-field__label { min-width: 182px; color: rgb(180,202,227); -unity-text-align: middle-left; }
+.settings-body .unity-base-text-field__input, .settings-body .unity-popup-field__input { background-color: rgb(19,37,61); color: rgb(235,244,255); border-width: 1px; border-color: rgba(134,186,241,.18); border-radius: 7px; padding: 6px 10px; }
+.settings-body .unity-base-slider__tracker { background-color: rgb(41,69,100); height: 3px; }
+.settings-body .unity-base-slider__dragger { background-color: rgb(128,206,255); border-radius: 8px; border-width: 0; }
+.settings-body .unity-base-slider__text-field { width: 55px; min-width: 55px; }
+.settings-inline { flex-direction: row; flex-wrap: wrap; margin-top: 8px; }
+.settings-footer { padding: 13px 28px; border-top-width: 1px; border-top-color: rgba(137,191,247,.12); }
+.settings-notice { min-height: 22px; font-size: 14px; color: rgb(143,208,243); white-space: normal; }
+.settings-actions { flex-direction: row; justify-content: flex-end; margin-top: 5px; }
+.settings-primary, .settings-secondary { min-height: 35px; padding: 8px 16px; margin: 4px 7px 3px 0; border-radius: 8px; border-width: 1px; font-size: 14px; }
+.settings-primary { background-color: rgb(66,143,203); border-color: rgb(91,174,226); color: white; }
+.settings-primary:hover { background-color: rgb(83,162,220); }
+.settings-secondary { background-color: rgba(107,159,214,.07); border-color: rgba(147,197,255,.16); color: rgb(192,217,244); }
+.settings-secondary:hover { background-color: rgba(107,159,214,.19); }
+.settings-primary:disabled, .settings-secondary:disabled { opacity: .4; }
+.settings-unavailable { padding: 18px; border-radius: 12px; background-color: rgba(147,197,255,.04); color: rgb(134,153,179); font-size: 15px; white-space: normal; margin-top: 16px; }
+.settings-connection { padding: 4px 28px 10px; font-size: 12px; color: rgb(113,143,174); }
+.size-overlay { position: absolute; left: 0; right: 0; top: 0; bottom: 0; }
+.size-frame { position: absolute; color: rgba(169,215,242,.75); }
+.size-handle { position: absolute; width: 36px; height: 36px; border-radius: 12px; background-color: rgba(15,38,62,.95); border-width: 1px; border-color: rgba(172,225,252,.8); color: rgb(201,237,255); }
+.size-handle:hover { background-color: rgb(32,76,110); border-color: rgb(211,244,255); color: white; }
+.size-drag-hint { position: absolute; left: 44px; top: 7px; width: 83px; font-size: 13px; color: rgb(188,216,235); background-color: rgba(10,26,45,.8); padding: 3px 8px; border-radius: 6px; }
+.size-toolbar { position: absolute; bottom: 24px; flex-direction: row; align-items: center; padding: 10px 15px; border-radius: 15px; background-color: rgba(8,23,40,.94); border-width: 1px; border-color: rgba(133,181,215,.26); }
+.size-status { flex-grow: 1; white-space: normal; font-size: 14px; color: rgb(188,213,232); margin-right: 12px; }
+.size-toolbar .settings-primary { background-color: rgb(57,113,153); border-color: rgba(158,211,245,.4); font-size: 13px; padding: 7px 12px; min-height: 32px; }
+.size-toolbar .settings-secondary { border-color: transparent; background-color: transparent; font-size: 13px; padding: 7px 10px; min-height: 32px; }
+.unity-scroller--vertical { width: 5px; }
+.unity-scroller__low-button, .unity-scroller__high-button { display: none; }
+.unity-scroller .unity-base-slider__dragger { background-color: rgba(110,180,255,.3); border-width: 0; border-radius: 3px; }
+/* 复用 LingChat 动作预览的左模型、右操作布局与深色半透明面板。 */
+.motion-overlay { position: absolute; left: 0; top: 0; right: 0; bottom: 0; background-color: rgba(0,0,0,.68); padding: 26px 40px; }
+.motion-window { flex-grow: 1; min-height: 0; flex-direction: row; background-color: rgb(20,30,44); border-radius: 16px; border-width: 1px; border-color: rgba(120,160,195,.4); overflow: hidden; }
+.motion-model { flex-grow: 1; min-width: 0; padding: 26px; }
+.motion-heading { flex-direction: row; align-items: center; }
+.motion-title { font-size: 25px; color: rgb(238,245,255); flex-grow: 1; }
+.motion-eyebrow { font-size: 11px; color: rgb(104,140,170); letter-spacing: 2px; }
+.motion-stage { flex-grow: 1; min-height: 0; margin-top: 12px; }
+.motion-camera-hint { font-size: 13px; color: rgb(146,172,195); -unity-text-align: middle-center; height: 32px; }
+.motion-aside { width: 410px; flex-shrink: 0; padding: 22px 22px 18px; border-left-width: 1px; border-left-color: rgba(130,170,200,.14); }
+.motion-tabs { flex-direction: row; margin-bottom: 12px; }
+.motion-tab { flex-grow: 1; height: 38px; border-width: 0; background-color: transparent; color: rgb(145,205,235); font-size: 16px; }
+.motion-tab:hover { background-color: rgba(121,217,255,.08); }
+.motion-close { width: 32px; border-width: 0; font-size: 25px; color: rgb(185,204,222); background-color: transparent; }
+.motion-controls { flex-grow: 1; min-height: 0; }
+.motion-intro, .motion-description { font-size: 15px; color: rgb(202,219,235); white-space: normal; margin: 10px 0; }
+.motion-selection { font-size: 21px; color: rgb(237,245,255); margin: 20px 0 8px; white-space: normal; }
+.motion-muted { font-size: 12px; color: rgb(157,180,201); white-space: normal; margin: 7px 0; }
+.motion-row { flex-direction: row; flex-wrap: wrap; align-items: center; }
+.motion-row .settings-secondary { flex-grow: 1; }
+.motion-row .unity-toggle { flex-grow: 1; }
+.motion-status { color: rgb(121,217,255); font-size: 13px; white-space: normal; margin-top: 15px; padding-top: 12px; border-top-width: 1px; border-top-color: rgba(130,170,200,.14); }
+.motion-controls .unity-base-field { flex-direction: column; margin: 9px 0; font-size: 14px; color: rgb(216,231,247); }
+.motion-controls .unity-base-field__label { margin-bottom: 7px; }
+.motion-controls .unity-toggle { flex-direction: row; }
+.motion-controls .unity-popup-field__input, .motion-controls .unity-base-text-field__input { min-height: 33px; padding: 7px 10px; background-color: rgb(38,60,83); color: rgb(238,245,255); border-width: 1px; border-color: rgba(114,160,195,.35); border-radius: 7px; }
+.motion-controls .settings-primary, .motion-controls .settings-secondary { margin-top: 8px; padding-top: 10px; padding-bottom: 10px; }
+.motion-item { margin: 5px 0; padding: 8px 12px; border-width: 1px; border-color: rgba(170,195,220,.13); border-radius: 9px; background-color: rgba(255,255,255,.025); }
+.motion-pose { margin: 14px 0; padding: 10px; border-width: 1px; border-color: rgba(130,170,200,.18); border-radius: 8px; }
+/* 与 LingChat 一致的轻量滚动条和圆角开关，避免默认编辑器控件露出。 */
+.settings-body .unity-scroller--vertical, .motion-controls .unity-scroller--vertical { width: 7px; min-width: 7px; margin-left: 8px; background-color: transparent; }
+.settings-body .unity-scroller__low-button, .settings-body .unity-scroller__high-button, .motion-controls .unity-scroller__low-button, .motion-controls .unity-scroller__high-button { display: none; }
+.settings-body .unity-scroller .unity-base-slider__tracker, .motion-controls .unity-scroller .unity-base-slider__tracker { background-color: rgba(125,160,195,.07); border-width: 0; }
+.settings-body .unity-scroller .unity-base-slider__dragger, .motion-controls .unity-scroller .unity-base-slider__dragger { width: 5px; min-width: 5px; margin: 0; border-width: 0; border-radius: 3px; background-color: rgba(133,179,216,.3); }
+.settings-body .unity-toggle__input, .motion-controls .unity-toggle__input { flex-grow: 0; width: 34px; min-width: 34px; height: 19px; padding: 2px; border-width: 0; border-radius: 10px; background-color: rgb(58,75,94); }
+.settings-body .unity-toggle:checked .unity-toggle__input, .motion-controls .unity-toggle:checked .unity-toggle__input { background-color: rgb(63,148,194); }
+.settings-body .unity-toggle__checkmark, .motion-controls .unity-toggle__checkmark { display: flex; width: 15px; height: 15px; border-radius: 8px; background-image: none; background-color: rgb(221,234,246); margin-left: 0; }
+.settings-body .unity-toggle:checked .unity-toggle__checkmark, .motion-controls .unity-toggle:checked .unity-toggle__checkmark { margin-left: 15px; }
+.settings-card { background-color: rgba(175,205,235,.035); border-color: rgba(170,205,240,.12); }
+.settings-primary { background-color: rgb(51,124,167); border-color: rgba(121,217,255,.5); }
+.settings-primary:hover { background-color: rgb(62,146,188); }
+.motion-tab.selected { border-bottom-width: 2px; border-bottom-color: rgb(121,217,255); color: rgb(220,243,255); }
+/* SettingsPanel / SettingsNav / MenuPage：全屏透明设置层、顶部横向导航。 */
+.settings-overlay { background-color: rgba(0,0,0,.7); }
+.settings-shell { width: 100%; max-width: 100%; height: 100%; max-height: 100%; border-width: 0; border-radius: 0; background-color: transparent; }
+.settings-top { padding: 22px 7% 10px; }
+.settings-rail { margin: 0 7%; }
+.settings-body { padding: 28px 14% 16px; }
+.settings-footer { padding: 16px 14%; border-top-color: rgba(255,255,255,.1); }
+.settings-connection { padding: 5px 14% 16px; }
+.settings-card { background-color: rgba(255,255,255,.05); border-color: rgba(255,255,255,.15); border-radius: 12px; }
+.motion-library-mode .motion-model { flex-grow: 0; width: 42%; }
+.motion-library-mode .motion-aside { flex-grow: 1; width: auto; }
+.motion-library-mode .motion-controls .unity-base-field { flex-direction: row; align-items: center; }
+.motion-library-mode .motion-controls .unity-base-field__label { min-width: 135px; margin-bottom: 0; }
+.motion-library-mode .motion-controls .unity-popup-field__input, .motion-library-mode .motion-search .unity-base-text-field__input { flex-grow: 1; }

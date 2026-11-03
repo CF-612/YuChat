@@ -1,6 +1,6 @@
 {
   "name": "LingChatXR.Runtime",
   "rootNamespace": "LingChatXR",
-  "references": ["LingChatXR.Core", "VRM10", "UniGLTF", "UniGLTF.Utils"],
+  "references": ["LingChatXR.Core", "Unity.ugui", "VRM10", "VRM10.MToon10", "UniGLTF", "UniGLTF.Utils", "SpringBoneJobs", "Unity.Mathematics", "FastSpringBone10", "Unity.Collections", "Unity.Newtonsoft.Json"],
   "autoReferenced": true
 }

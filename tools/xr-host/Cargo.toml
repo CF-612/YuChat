@@ -1,0 +1,32 @@
+[package]
+name = "lingchat-xr-host"
+version = "0.1.0"
+edition = "2024"
+license = "AGPL-3.0-only"
+
+[dependencies]
+anyhow = "1"
+async-trait = "0.1"
+async-stream = "0.3"
+axum = "0.7"
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+futures-util = "0.3"
+reqwest = { version = "0.13", default-features = false, features = ["json", "stream", "multipart", "rustls", "system-proxy"] }
+genai = "=0.7.0-rc.8"
+chrono = "0.4"
+tracing = "0.1"
+uuid = { version = "1", features = ["v4"] }
+regex = "1"
+base64 = "0.22"
+ort = { version = "=2.0.0-rc.13", default-features = false, features = ["std", "ndarray", "load-dynamic", "directml"] }
+sbv2_core = { git = "https://gh-proxy.org/github.com/shadow01a/sbv2-api/", rev = "ffb0b59", default-features = false, features = ["std", "directml"] }
+
+[patch.crates-io]
+esaxx-rs = { path = "vendor/esaxx-rs" }
+jpreprocess-naist-jdic = { git = "https://gh-proxy.org/github.com/shadow01a/jpreprocess", rev = "39f5b0d" }
+
+[profile.dev]
+debug = 0

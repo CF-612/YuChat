@@ -62,8 +62,8 @@ namespace LingChatXR.Editor
         {
             if (!Application.unityVersion.StartsWith("6000.")) throw new Exception("Unity 6 is required.");
             CreateScene();
-            if (!File.Exists("Assets/StreamingAssets/Characters/blue-placeholder/manifest.json"))
-                throw new FileNotFoundException("Create the placeholder package first.");
+            if (!File.Exists("Assets/StreamingAssets/Characters/" + FeiyuPreview.ActiveCharacterFolder + "/manifest.json"))
+                throw new FileNotFoundException("Run tools/prepare-alpha2.ps1 first.");
             Debug.Log("XR_PROJECT_STATIC_READY Unity=" + Application.unityVersion);
         }
     }

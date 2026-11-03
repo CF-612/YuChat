@@ -1,0 +1,28 @@
+{
+  "name": "com.vrmc.gltf",
+  "version": "0.131.4",
+  "displayName": "UniGLTF",
+  "description": "GLTF importer and exporter",
+  "unity": "2021.3",
+  "keywords": [
+    "gltf"
+  ],
+  "author": {
+    "name": "VRM Consortium"
+  },
+  "dependencies": {
+    "com.unity.modules.animation": "1.0.0",
+    "com.unity.modules.imgui": "1.0.0",
+    "com.unity.modules.imageconversion": "1.0.0",
+    "com.unity.test-framework": "1.4.6",
+    "com.unity.mathematics": "1.2.6"
+  },
+  "samples": [
+    {
+      "displayName": "GltfViewer",
+      "description": "UniGLTF runtime loader sample",
+      "path": "Samples~/GltfViewer"
+    }
+  ],
+  "_fingerprint": "af52684858205c37f5004a7c17f24b1073771d2d"
+}

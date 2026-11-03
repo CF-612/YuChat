@@ -6,7 +6,8 @@ import { execFileSync } from 'node:child_process';
 import { parseDocument } from 'yaml';
 
 const MAX_SETTINGS_BYTES = 2 * 1024 * 1024;
-const MAX_MODEL_BYTES = 100 * 1024 * 1024;
+// alpha.2 原型为 184 MiB；保留有限上限，不裁剪或重导出源资产。
+const MAX_MODEL_BYTES = 256 * 1024 * 1024;
 const MAX_RULES_BYTES = 256 * 1024;
 const TEXT_FIELDS = new Set(['ai_name', 'ai_subtitle', 'title', 'info', 'system_prompt',
   'system_prompt_example', 'system_prompt_example_old', 'thinking_message']);
@@ -134,7 +135,7 @@ export function parseSettings(bytes) {
 }
 
 export function inspectVrm(bytes) {
-  if (bytes.length > MAX_MODEL_BYTES || bytes.length < 20 || bytes.readUInt32LE(0) !== 0x46546c67 || bytes.readUInt32LE(4) !== 2 || bytes.readUInt32LE(8) !== bytes.length) fail('INVALID_VRM', 'Model must be a complete GLB 2 VRM of at most 100 MiB.');
+  if (bytes.length > MAX_MODEL_BYTES || bytes.length < 20 || bytes.readUInt32LE(0) !== 0x46546c67 || bytes.readUInt32LE(4) !== 2 || bytes.readUInt32LE(8) !== bytes.length) fail('INVALID_VRM', 'Model must be a complete GLB 2 VRM of at most 256 MiB.');
   const length = bytes.readUInt32LE(12);
   if (bytes.readUInt32LE(16) !== 0x4e4f534a || length % 4 || 20 + length > bytes.length) fail('INVALID_VRM', 'VRM JSON chunk is invalid.');
   let gltf;

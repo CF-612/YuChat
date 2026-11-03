@@ -1,0 +1,6 @@
+{
+  "name": "LingChatXR.XR",
+  "rootNamespace": "LingChatXR.XR",
+  "references": ["LingChatXR.Runtime", "LingChatXR.Core", "Unity.XR.Interaction.Toolkit", "Unity.XR.CoreUtils", "Unity.InputSystem", "Unity.XR.Hands", "Unity.XR.Management", "Unity.XR.OpenXR", "Unity.XR.MetaOpenXR", "Unity.XR.ARFoundation", "Unity.XR.ARSubsystems", "Unity.ugui", "Unity.XR.Interaction.Toolkit.Samples.SpatialKeyboard", "Unity.TextMeshPro"],
+  "autoReferenced": true
+}

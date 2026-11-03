@@ -1,0 +1,13 @@
+{
+  "profileVersion": 1,
+  "source": "GEM SOMA metric BVH",
+  "coordinates": {"handedness": "right", "up": "+Y", "forward": "+Z", "lengthUnit": "meter"},
+  "humanBones": {
+    "hips": "Hips", "spine": "Spine1", "chest": "Spine2", "upperChest": "Chest",
+    "neck": "Neck1", "head": "Head",
+    "leftShoulder": "LeftShoulder", "leftUpperArm": "LeftArm", "leftLowerArm": "LeftForeArm", "leftHand": "LeftHand",
+    "rightShoulder": "RightShoulder", "rightUpperArm": "RightArm", "rightLowerArm": "RightForeArm", "rightHand": "RightHand",
+    "leftUpperLeg": "LeftLeg", "leftLowerLeg": "LeftShin", "leftFoot": "LeftFoot", "leftToes": "LeftToeBase",
+    "rightUpperLeg": "RightLeg", "rightLowerLeg": "RightShin", "rightFoot": "RightFoot", "rightToes": "RightToeBase"
+  }
+}

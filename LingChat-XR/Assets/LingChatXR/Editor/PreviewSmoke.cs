@@ -90,6 +90,7 @@ namespace LingChatXR.Editor
                     Capture("unity6-held.png");
                     preview.HandlePointer(heldPointerRay, false, false, false, false, true, 0);
                     Require(preview.Interaction.LastReleaseWasValid, "mouse release without wheel lowering");
+                    Settle();
                     TestPointerDrop(new Vector3(.07f, 0, 0), false, true);
                     TestPointerDrop(new Vector3(1.2f, 0, 0), false, false);
                     TestPointerDrop(Vector3.zero, true, false);
@@ -165,9 +166,18 @@ namespace LingChatXR.Editor
             // Move only on button-up: catches accidentally using the previous held position.
             preview.HandlePointer(release, overUi, false, false, false, true, 0);
             Require(preview.Interaction.LastReleaseWasValid == expectedValid, "release frame / UI validity");
+            Require(preview.Interaction.State==PetState.Descending,"pointer release must enter continuous descent");
+            Settle();
             Vector3 expected = expectedValid ? before + shift : before;
             Require(Vector3.Distance(FeiyuPreview.ToUnity(preview.Interaction.Position), expected) < .001f, "release destination / recovery");
             Require(!preview.DropPreviewValid, "marker hidden after release");
+        }
+        private static void Settle()
+        {
+            for(int i=0;i<240&&(preview.Interaction.State==PetState.Descending||preview.Interaction.State==PetState.Settling);i++)
+                preview.Interaction.StepDescent(1f/60,preview.Interaction.Generation);
+            preview.RefreshSpatialState();
+            Require(preview.Interaction.State==PetState.Idle,"release settles on support");
         }
         private static Ray RayTo(Vector3 point) => new Ray(Camera.main.transform.position, point - Camera.main.transform.position);
 

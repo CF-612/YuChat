@@ -36,10 +36,20 @@ namespace LingChatXR.Speech
         public VoiceKind CurrentKind { get; private set; }
         public bool IsWaiting => activeRequest != null;
         public bool IsPlaying => voice != null && voice.isPlaying;
-        public float PlaybackSeconds => voice == null ? 0f : voice.time;
+        // Unity 6 无 AudioClip 时读取 time 会逐帧报警；静音状态没有可用语音时钟。
+        public float PlaybackSeconds => voice == null || voice.clip == null ? 0f : voice.time;
+        public Chat.XrVoiceRhythm Rhythm {get;private set;}
         public string LastStatus { get; private set; } = "Silent until an endpoint or cached reaction is explicitly supplied.";
         public long Generation => generation;
         public XrTtsSettings Settings => settings.Copy();
+        public float Volume { get => voice == null ? 1 : voice.volume; set { if (voice != null) voice.volume = Mathf.Clamp01(value); } }
+        public float SampleAmplitude(float[] buffer)
+        {
+            if (!IsPlaying || buffer == null || buffer.Length == 0) return 0;
+            voice.GetOutputData(buffer, 0); float sum = 0;
+            foreach (float sample in buffer) sum += sample * sample;
+            return Mathf.Sqrt(sum / buffer.Length);
+        }
         public string SettingsPath => Path.Combine(Application.persistentDataPath, "xr-tts-v1.json");
         // Reaction outcomes never imply dialogue advancement; callers must inspect VoiceKind.
         public event Action<VoiceKind, VoiceOutcome, long> PlaybackEvent;
@@ -123,6 +133,24 @@ namespace LingChatXR.Speech
             }
         }
 
+        // Consume the backend's existing sentence audio; never synthesize it a second time.
+        public bool PlayDialogueAudio(string url, string bearerToken)
+        {
+            if (!isActiveAndEnabled || voice == null || CurrentKind != VoiceKind.None) return false;
+            long token = ++generation;
+            CurrentKind = VoiceKind.Dialogue;
+            try
+            {
+                activeRequest = UnityWebRequestMultimedia.GetAudioClip(url, AudioType.WAV);
+                activeRequest.timeout = 60;
+                activeRequest.redirectLimit = 0;
+                activeRequest.SetRequestHeader("Authorization", "Bearer " + bearerToken);
+                StartOwnedRoutine(ReceiveAndPlay(activeRequest, activeRequest.SendWebRequest(), token), token);
+                return true;
+            }
+            catch { FailCurrent(token, "Audio download failed."); return false; }
+        }
+
         public bool PlayReaction(AudioClip preloadedClip)
         {
             if (!isActiveAndEnabled || voice == null || preloadedClip == null) return false;
@@ -195,6 +223,7 @@ namespace LingChatXR.Speech
 
         private void StartVoice(AudioClip clip, VoiceKind kind, long token)
         {
+            Rhythm=kind==VoiceKind.Dialogue?Chat.XrVoiceRhythm.Build(clip):null;
             CurrentKind = kind;
             voice.clip = clip;
             voice.Play();

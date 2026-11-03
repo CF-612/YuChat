@@ -8,4 +8,7 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Scenes/FeiyuPreview.unity
     guid: ad2ab9bd35d55b9459d2f48889d850f7
-  m_configObjects: {}
+  m_configObjects:
+    com.unity.xr.arfoundation.simulation_settings: {fileID: 11400000, guid: dc998385c85cbea4798a176a1e06b4d9, type: 2}
+    com.unity.xr.management.loader_settings: {fileID: 11400000, guid: 4e2310a9605ba6b408cc9b06dda9c7d5, type: 2}
+    com.unity.xr.openxr.settings4: {fileID: 11400000, guid: 8ae4b4741a88eaf469e7ed4548d09571, type: 2}
