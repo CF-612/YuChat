@@ -20,6 +20,8 @@ namespace LingChatXR.Editor
         string directorStatus="待检查",generatorStatus="待检查";
         int revision,seed,index,interaction; FeiyuAvatar owner;
         double startedAt;
+        bool faceTesting;int faceChoice;
+        static readonly string[] FaceLabels={"开心","害羞","心动","疑问","惊讶","生气","悲伤","安心"};
         bool watching;string previous="";
         Vector2 scroll;
         [MenuItem("YuChat/动作实验/自然语言导演试玩")]
@@ -72,6 +74,20 @@ namespace LingChatXR.Editor
                     prefs.items.Clear();
                     prefs.Save(live.Avatar.Package.model.sha256);
                     player.ApplyPreferences(prefs);
+                }
+                faceTesting=EditorGUILayout.Foldout(faceTesting,"表情测试 · 离线语音",true);
+                if(faceTesting){
+                    var avatar=live.Avatar;
+                    var voice=UnityEngine.Object.FindAnyObjectByType<XrChatController>()?.Voice;
+                    if(GUILayout.Button("播放样句（含停顿）")&&voice!=null){
+                        var clip=Resources.Load<AudioClip>("LocalLingChatEffects/faceSample");
+                        if(clip){voice.Stop();clip.LoadAudioData();if(!voice.PlayReaction(clip))outcome=voice.LastStatus;}else outcome="缺少本机离线语音样句";
+                    }
+                    if(GUILayout.Button("停止样句")&&voice!=null)voice.Stop();
+                    faceChoice=EditorGUILayout.Popup("手动表情",faceChoice,FaceLabels);
+                    if(GUILayout.Button("预览表情"))avatar.PreviewEmotion=FaceLabels[faceChoice];
+                    if(GUILayout.Button("清除手动预览"))avatar.PreviewEmotion=null;
+                    EditorGUILayout.HelpBox("眼："+avatar.EyeOwner+"　嘴："+avatar.MouthOwner+"　"+(avatar.UsesMouth24Face?"局部眼嘴配方":"缺少局部互动键，使用标准 VRM 通道"),MessageType.Info);
                 }
                 input=EditorGUILayout.TextArea(input,GUILayout.MinHeight(48));
                 if(GUILayout.Button(outcome=="请求中"?"重新提交给导演":"让导演决定"))_=Run(live,0);

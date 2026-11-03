@@ -31,7 +31,7 @@ namespace LingChatXR
         const float DizzySeconds=3f, ScrunchSeconds=.5f;
         float dizzyUntil, landingScrunchUntil;
         bool fallingReaction, fallingDizzy, fallingScrunch;
-        public void ShakeWhileHeld(){if(UsesMouth24Face&&heldReaction)dizzyUntil=Time.unscaledTime+DizzySeconds;}
+        public void ShakeWhileHeld(){if(spiralAvailable&&heldReaction)dizzyUntil=Time.unscaledTime+DizzySeconds;}
         private float happyBase;
         static readonly ExpressionKey MouthSmile=ExpressionKey.CreateCustom("mouthSmile");
         bool hasMouthSmile;float smileBase;
@@ -53,8 +53,17 @@ namespace LingChatXR
         private float mouth;
         public const string Alpha2Sha = "9c490a224fe7502f6be2cba929ff57445e6627bbd59986eb4ef240e79538a291";
         private const string EyeTail5Sha = "8d399eae8f55c65a5c6f37c18864db1d441d7e2184ff83d08e97dc7a7b94e613";
-        private const string Mouth24Sha="5d5762143b093f71bfd513b69449f36097a7300e414bcc1b84853604b6ea3e2d";
-        public bool UsesMouth24Face=>Package?.model?.sha256==Mouth24Sha;
+
+        public bool UsesMouth24Face {get;private set;}
+        bool spiralAvailable;
+        string stickerSignal;
+        float stickerUntil;
+        TextMesh sticker;
+        readonly System.Collections.Generic.HashSet<ExpressionKey> faceKeys=new System.Collections.Generic.HashSet<ExpressionKey>();
+        float surprisedMouthUntil;
+        public string PreviewEmotion {get;set;}
+        public string EyeOwner {get;private set;}
+        public string MouthOwner {get;private set;}
         public bool IsAlpha2 => UsesMouth24Face || Package?.model?.sha256 == Alpha2Sha || Package?.model?.sha256 == EyeTail5Sha;
         public bool FreezePresentation { get; set; }
         public bool GazeEnabled { get; set; } = true;
@@ -191,6 +200,9 @@ namespace LingChatXR
             blinkBase = Instance.Runtime.Expression.GetWeight(ExpressionKey.Blink);
             foreach(var key in Instance.Runtime.Expression.ExpressionKeys)if(key.Equals(MouthSmile)){hasMouthSmile=true;smileBase=Instance.Runtime.Expression.GetWeight(key);break;}
             foreach(var key in Instance.Runtime.Expression.ExpressionKeys){if(key.Equals(ExpressionKey.CreateCustom("eyeSqueeze"))||key.Equals(ExpressionKey.CreateCustom("eyeChevron"))||key.Equals(ExpressionKey.CreateCustom("><"))){authoredSqueeze=key;hasAuthoredSqueeze=true;}hasClosure|=key.Equals(SqueezeClosure);hasBlush|=key.Equals(Blush);hasSqueezedEyes|=key.Equals(SqueezedEyes);}
+            faceKeys.UnionWith(Instance.Runtime.Expression.ExpressionKeys);
+            UsesMouth24Face=faceKeys.Contains(ShockEye)&&faceKeys.Contains(MouthCircle)&&faceKeys.Contains(EyeSmile)&&hasSqueezedEyes;
+            spiralAvailable=faceKeys.Contains(SpiralEye);
             nextBlink = Time.time + 2.5f;
             originalCenters = Instance.SpringBone.Springs.ConvertAll(s => s.Center).ToArray();
             // 默认通用接线；true 仅用于保留未修正的作者基线对照，不按角色选择算法。
@@ -392,6 +404,7 @@ namespace LingChatXR
                     landingScrunchUntil=now+ScrunchSeconds;
                 fallingReaction=false;
             }
+            if(!heldReaction&&state.State==Core.PetState.Held)surprisedMouthUntil=now+.38f;
             heldReaction=state.State==Core.PetState.Held;
             if(heldReaction||state.State==Core.PetState.Suspended||state.State==Core.PetState.Unplaced)
                 landingScrunchUntil=0;
@@ -415,31 +428,8 @@ namespace LingChatXR
             if(!holdFace&&touchExpression<.001f)touchExpression=0;
             float squeeze=(hasAuthoredSqueeze||hasSqueezedEyes)&&touching?Mathf.SmoothStep(0,1,Mathf.InverseLerp(.035f,.055f,pressTarget)):0;
             pressEyes=Mathf.Lerp(pressEyes,squeeze,1-Mathf.Exp(-dt/.075f));
-            bool dizzy=heldReaction && Time.unscaledTime<dizzyUntil || fallingReaction && fallingDizzy;
-            bool scrunch=Time.unscaledTime<landingScrunchUntil || fallingReaction && fallingScrunch ||
-                heldReaction && dizzyUntil>0 && !dizzy && Time.unscaledTime<dizzyUntil+ScrunchSeconds;
-            bool carryFace=heldReaction||fallingReaction;
-            bool authoredTouch=UsesMouth24Face&&(holdFace||carryFace||scrunch||tapAge<.42f);
-            if(UsesMouth24Face)
-            {
-                if(touching)squeezePose=pressTarget>(squeezePose?.032f:.046f);
-                if(!holdFace)squeezePose=false;
-                bool shocked=carryFace||tapAge<.42f;
-                float pet=holdFace&&!squeezePose&&!shocked&&!scrunch?1:0;
-                float press=holdFace&&squeezePose&&!shocked&&!scrunch?1:0;
-                var face=Instance.Runtime.Expression;
-                face.SetWeight(EyeSmile,pet);face.SetWeight(BrowHappy,pet);
-                face.SetWeight(MouthSmile,authoredTouch?pet*.5f:smileBase);face.SetWeight(CheekSlashes,0);
-                face.SetWeight(SqueezedEyes,scrunch?1:press);face.SetWeight(MouthCircle,shocked?1:press);
-                face.SetWeight(ShockEye,carryFace&&!dizzy&&!scrunch?1:0);face.SetWeight(SpiralEye,dizzy?1:0);
-            }
-            else
-            {
-            if(hasBlush)Instance.Runtime.Expression.SetWeight(Blush,.18f*touchExpression);
-            if(hasAuthoredSqueeze)Instance.Runtime.Expression.SetWeight(authoredSqueeze,pressEyes);
-            else if(hasSqueezedEyes)Instance.Runtime.Expression.SetWeight(SqueezedEyes,pressEyes);
-            if(hasClosure&&!hasAuthoredSqueeze)Instance.Runtime.Expression.SetWeight(SqueezeClosure,pressEyes);
-            }
+            ComposeFace(dt,holdFace);
+            UpdateSticker(viewerPosition);
             if(!MotionPreviewMode)Motions.UpdateConversation(speech!=null&&speech.IsPlaying,chat!=null&&chat.Thinking,
                 speech?.Generation??0,speech?.PlaybackSeconds??0,speech?.Rhythm,chat?.Emotion??"");
             Motions.Step(Time.unscaledDeltaTime);
@@ -455,24 +445,6 @@ namespace LingChatXR
                 if(presentationChest!=null)presentationChest.localRotation*=Quaternion.Euler(-15*recoil,0,0);
                 if(presentationHead!=null)presentationHead.localRotation*=Quaternion.Euler(-8*recoil,0,0);
             }
-            string emotion=chat!=null&&!chat.Thinking?chat.Emotion:"";
-            bool happy=emotion=="开心"||emotion=="喜悦"||emotion=="愉快"||emotion=="害羞";
-            happyWeight = Mathf.MoveTowards(happyWeight, Mathf.Lerp(happy ? .55f : happyBase,hasMouthSmile?0:.28f,touchExpression), dt * 4f);
-            Instance.Runtime.Expression.SetWeight(ExpressionKey.Happy, authoredTouch?0:happyWeight);
-            if(hasMouthSmile&&!UsesMouth24Face)Instance.Runtime.Expression.SetWeight(MouthSmile,Mathf.Lerp(smileBase,.7f,touchExpression));
-            if(IsAlpha2)
-            {
-                Blend(ExpressionKey.Sad,touchExpression>.01f?0:emotion=="悲伤"||emotion=="伤心"?.55f:0,dt);
-                Blend(ExpressionKey.Angry,touchExpression>.01f?0:emotion=="生气"||emotion=="愤怒"?.45f:0,dt);
-                Blend(ExpressionKey.Surprised,touchExpression>.01f?0:emotion=="惊讶"||emotion=="震惊"?.55f:0,dt);
-                Blend(ExpressionKey.Relaxed,touchExpression>.01f?0:emotion=="安心"||emotion=="放松"?.4f:0,dt);
-            }
-            if(authoredTouch){nextBlink=Time.time+2.5f;blinkStart=-100;}
-            if (Time.time >= nextBlink) { blinkStart = Time.time; nextBlink = Time.time + 3.4f; }
-            float blink = Mathf.Max(0, 1 - Mathf.Abs((Time.time - blinkStart) / 0.09f - 1));
-            if(blink>0&&previousBlink<=0)allowBlink=!holdFace&&touchExpression==0;
-            previousBlink=blink;
-            Instance.Runtime.Expression.SetWeight(ExpressionKey.Blink,UsesMouth24Face?(authoredTouch?0:Mathf.Max(blinkBase,blink)):Mathf.Max(blinkBase,Mathf.Max(allowBlink?blink:0,touchExpression)*(1-pressEyes)));
             if (IsAlpha2)
             {
                 // 脚底保持贴地，仅胸部轻微前倾后收稳；口型订阅现有人声，不另建播放源。
@@ -481,10 +453,6 @@ namespace LingChatXR
                 if(presentationLeftArm!=null)presentationLeftArm.localRotation*=Quaternion.Euler(0,0,-18f*fallPose);
                 if(presentationRightArm!=null)presentationRightArm.localRotation*=Quaternion.Euler(0,0,18f*fallPose);
             }
-            // 标准 VRM 口型与动作共存，继续复用唯一语音源，不按角色名字接分支。
-            float target = !authoredTouch && speech != null && speech.IsPlaying ? Mathf.Clamp01(speech.SampleAmplitude(voiceSamples) * 8) : 0;
-            mouth = authoredTouch?0:Mathf.MoveTowards(mouth, target, dt * 8);
-            Instance.Runtime.Expression.SetWeight(ExpressionKey.Aa, mouth * .75f);
             ApplyJelly(dt);
             if (head == null) return;
             Vector3 focus = AttentionPoint(viewerPosition,holdFace);
@@ -498,6 +466,7 @@ namespace LingChatXR
             float t=Time.unscaledTime;
             if(quiet&&presentationChest!=null)presentationChest.localRotation*=Quaternion.Euler(Mathf.Sin(t*1.15f)*1.03f*idleAmount,0,Mathf.Sin(t*.17f+.6f)*.63f*idleAmount);
             if(quiet&&GazeEnabled&&!FollowingHand){var look=IdleLook(t)*idleAmount;yaw+=look.x;pitch+=look.y;}
+            if(PreviewEmotion=="害羞"){yaw+=12;pitch+=8;}
             if(holdFace){yaw=0;pitch=23;}
             else if(FollowingHand)
                 pitch=Mathf.Clamp(-Mathf.Atan2(local.y,new Vector2(local.x,local.z).magnitude)*Mathf.Rad2Deg,-55,38);
@@ -507,6 +476,88 @@ namespace LingChatXR
             gazeOffset=Quaternion.Slerp(gazeOffset,Quaternion.Euler(pitch*.6f,yaw*.75f,0),1-Mathf.Exp(-6f*dt));
             if(presentationHead!=null&&!Motions.HeadOccupied)presentationHead.localRotation*=gazeOffset;
             gaze.position = head.position + transform.TransformDirection(eyeAim * Vector3.forward);
+        }
+        static readonly ExpressionKey QuestionMark=ExpressionKey.CreateCustom("vee_Question22"),
+            SurpriseMark=ExpressionKey.CreateCustom("vee_Exclamation"), AngerMark=ExpressionKey.CreateCustom("vee_Anger Mark");
+        void UpdateSticker(Vector3 viewer)
+        {
+            string mood=PreviewEmotion??(chat!=null&&!chat.Thinking?chat.Emotion:"");
+            string signal=heldReaction||mood=="惊讶"?"!":mood=="疑问"?"?":mood=="生气"?"怒":"";
+            if(signal!=stickerSignal){stickerSignal=signal;stickerUntil=Time.unscaledTime+.65f;}
+            bool on=signal!=""&&Time.unscaledTime<stickerUntil;
+            var key=signal=="?"?QuestionMark:signal=="怒"?AngerMark:SurpriseMark;
+            foreach(var mark in StickerKeys)if(faceKeys.Contains(mark))Instance.Runtime.Expression.SetWeight(mark,on&&key.Equals(mark)?1:0);
+            if(!on||faceKeys.Contains(key)){if(sticker!=null)sticker.gameObject.SetActive(false);return;}
+            if(sticker==null){
+                var obj=new GameObject("互动符号");obj.transform.SetParent(transform,false);sticker=obj.AddComponent<TextMesh>();
+                sticker.font=Resources.Load<Font>("Fonts/NotoSansSC");
+                if(sticker.font!=null)obj.GetComponent<MeshRenderer>().sharedMaterial=sticker.font.material;
+                sticker.fontSize=64;sticker.anchor=TextAnchor.MiddleCenter;sticker.color=new Color(.36f,.75f,1);
+            }
+            sticker.gameObject.SetActive(true);sticker.text=signal;sticker.characterSize=HeightMeters*.055f;
+            var anchor=head!=null?head.position:transform.position+Vector3.up*HeightMeters;
+            sticker.transform.position=anchor+transform.right*HeightMeters*.32f+Vector3.up*HeightMeters*.18f;
+            var forward=sticker.transform.position-viewer;
+            if(forward.sqrMagnitude>.0001f)sticker.transform.rotation=Quaternion.LookRotation(forward);
+        }
+        static readonly ExpressionKey[] StickerKeys={QuestionMark,SurpriseMark,AngerMark};
+
+        void ComposeFace(float dt,bool holdFace)
+        {
+            bool speaking=speech!=null&&speech.IsPlaying;
+            string emotion=PreviewEmotion??(chat!=null&&!chat.Thinking?chat.Emotion:"");
+            bool dizzy=heldReaction && Time.unscaledTime<dizzyUntil || fallingReaction && fallingDizzy;
+            bool scrunch=Time.unscaledTime<landingScrunchUntil || fallingReaction && fallingScrunch ||
+                heldReaction && dizzyUntil>0 && !dizzy && Time.unscaledTime<dizzyUntil+ScrunchSeconds;
+            bool carryFace=heldReaction||fallingReaction;
+            bool mouthLocked=UsesMouth24Face&&(tapAge<.42f||carryFace&&(!speaking||Time.unscaledTime<surprisedMouthUntil)||holdFace&&squeezePose);
+            EyeOwner=carryFace||scrunch||holdFace?"互动":"心情 / 眨眼";
+            MouthOwner=mouthLocked?"互动":speaking?"角色语音":"当前心情";
+            bool authoredTouch=UsesMouth24Face&&(holdFace||carryFace||scrunch||tapAge<.42f);
+            if(UsesMouth24Face)
+            {
+                if(touching)squeezePose=pressTarget>(squeezePose?.032f:.046f);
+                if(!holdFace)squeezePose=false;
+                bool shocked=carryFace||tapAge<.42f;
+                float pet=holdFace&&!squeezePose&&!shocked&&!scrunch?1:0;
+                float press=holdFace&&squeezePose&&!shocked&&!scrunch?1:0;
+                var face=Instance.Runtime.Expression;
+                face.SetWeight(EyeSmile,pet);face.SetWeight(BrowHappy,pet);
+                face.SetWeight(MouthSmile,authoredTouch?pet*.5f:smileBase);face.SetWeight(CheekSlashes,0);
+                if(hasBlush)face.SetWeight(Blush,!authoredTouch&&(emotion=="害羞"||emotion=="心动")?.4f:0);
+                if(!authoredTouch&&emotion=="心动"){face.SetWeight(BrowHappy,.5f);face.SetWeight(MouthSmile,.35f);}
+                face.SetWeight(SqueezedEyes,scrunch?1:press);face.SetWeight(MouthCircle,shocked&&mouthLocked?1:press);
+                face.SetWeight(ShockEye,carryFace&&!dizzy&&!scrunch?1:0);face.SetWeight(SpiralEye,dizzy?1:0);
+            }
+            else
+            {
+            if(hasBlush)Instance.Runtime.Expression.SetWeight(Blush,.18f*touchExpression);
+            if(hasAuthoredSqueeze)Instance.Runtime.Expression.SetWeight(authoredSqueeze,pressEyes);
+            else if(hasSqueezedEyes)Instance.Runtime.Expression.SetWeight(SqueezedEyes,pressEyes);
+            if(hasClosure&&!hasAuthoredSqueeze)Instance.Runtime.Expression.SetWeight(SqueezeClosure,pressEyes);
+            }
+
+            bool happy=emotion=="开心"||emotion=="喜悦"||emotion=="愉快"||emotion=="害羞";
+            happyWeight = Mathf.MoveTowards(happyWeight, Mathf.Lerp(happy ? .55f : happyBase,hasMouthSmile?0:.28f,touchExpression), dt * 4f);
+            Instance.Runtime.Expression.SetWeight(ExpressionKey.Happy, authoredTouch?0:happyWeight);
+            if(hasMouthSmile&&!UsesMouth24Face)Instance.Runtime.Expression.SetWeight(MouthSmile,Mathf.Lerp(smileBase,.7f,touchExpression));
+            if(faceKeys.Contains(ExpressionKey.Sad))
+            {
+                Blend(ExpressionKey.Sad,touchExpression>.01f?0:emotion=="悲伤"||emotion=="伤心"?.55f:0,dt);
+                Blend(ExpressionKey.Angry,touchExpression>.01f?0:emotion=="生气"||emotion=="愤怒"?.45f:0,dt);
+                Blend(ExpressionKey.Surprised,touchExpression>.01f?0:emotion=="惊讶"||emotion=="震惊"?.55f:0,dt);
+                Blend(ExpressionKey.Relaxed,touchExpression>.01f?0:emotion=="安心"||emotion=="放松"?.4f:0,dt);
+            }
+            if(authoredTouch){nextBlink=Time.time+2.5f;blinkStart=-100;}
+            if (Time.time >= nextBlink) { blinkStart = Time.time; nextBlink = Time.time + 3.4f; }
+            float blink = Mathf.Max(0, 1 - Mathf.Abs((Time.time - blinkStart) / 0.09f - 1));
+            if(blink>0&&previousBlink<=0)allowBlink=!holdFace&&touchExpression==0;
+            previousBlink=blink;
+            Instance.Runtime.Expression.SetWeight(ExpressionKey.Blink,UsesMouth24Face?(authoredTouch?0:Mathf.Max(blinkBase,blink)):Mathf.Max(blinkBase,Mathf.Max(allowBlink?blink:0,touchExpression)*(1-pressEyes)));
+            // 标准 VRM 口型与动作共存，继续复用唯一语音源，不按角色名字接分支。
+            float target = !mouthLocked && speech != null && speech.IsPlaying ? Mathf.Clamp01(speech.SampleAmplitude(voiceSamples) * 8) : 0;
+            mouth = mouthLocked?0:Mathf.MoveTowards(mouth, target, dt * 8);
+            Instance.Runtime.Expression.SetWeight(ExpressionKey.Aa, mouth * .75f);
         }
         private void Blend(ExpressionKey key,float target,float dt) => Instance.Runtime.Expression.SetWeight(key,Mathf.MoveTowards(Instance.Runtime.Expression.GetWeight(key),target,dt*3));
 

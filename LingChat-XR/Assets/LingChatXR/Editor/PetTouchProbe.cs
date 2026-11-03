@@ -20,6 +20,53 @@ namespace LingChatXR.Editor
             try{if(EditorApplication.timeSinceStartup>deadline)throw new Exception("timeout");if(!EditorApplication.isPlaying||frame==Time.frameCount)return;frame=Time.frameCount;work??=Checks();if(work.MoveNext())return;File.WriteAllText(Path.Combine(Output,"checks.json"),checks.ToString());Debug.Log("XR_M1_PASSED");EditorApplication.update-=Tick;EditorApplication.Exit(0);}
             catch(Exception e){File.WriteAllText(Path.Combine(Output,"failure.txt"),e.ToString());Debug.LogException(e);EditorApplication.update-=Tick;EditorApplication.Exit(1);}
         }
+        public static void RunSpeechFace(){work=SpeechFace();Run();}
+        static IEnumerator SpeechFace()
+        {
+            var live=UnityEngine.Object.FindAnyObjectByType<FeiyuPreview>();live.ManualInput=true;
+            while(!live.Ready)yield return null;
+            live.Place(Vector3.zero);yield return null;
+            var a=live.Avatar;var core=live.Interaction;var voice=UnityEngine.Object.FindAnyObjectByType<Chat.XrChatController>().Voice;
+            var clip=Resources.Load<AudioClip>("LocalLingChatEffects/faceSample");
+            var cam=new GameObject("表情录屏").AddComponent<Camera>();cam.orthographic=true;cam.orthographicSize=a.HeightMeters*.73f;
+            var focus=a.transform.position+Vector3.up*a.HeightMeters*.67f;
+            cam.transform.position=focus+a.transform.forward*.7f+Vector3.up*.08f;cam.transform.LookAt(focus);cam.nearClipPlane=.01f;
+            var trace=new JArray();int token=0;float start=Time.realtimeSinceStartup;bool held=false,released=false,petStarted=false;
+            var basePos=core.Position;float heldPeak=0;bool pauseOwned=false,shortShock=false;
+            Check(clip!=null,"样句资源可读");
+            voice.Stop();clip.LoadAudioData();while(clip.loadState==AudioDataLoadState.Loading)yield return null;
+            start=Time.realtimeSinceStartup;Check(voice.PlayReaction(clip),"离线实际语音起播 "+voice.LastStatus+" "+clip.loadState);
+            float endAt=-1;
+            while(endAt<0||Time.realtimeSinceStartup-endAt<.7f)
+            {
+                if(!voice.IsPlaying && endAt<0)endAt=Time.realtimeSinceStartup;
+                if(Time.realtimeSinceStartup-start>30)throw new TimeoutException("录屏时钟超时");
+                float t=endAt<0?voice.PlaybackSeconds:clip.length+Time.realtimeSinceStartup-endAt;
+                if(t>.2f&&!petStarted){petStarted=core.BeginTouch("face-probe");live.RefreshSpatialState();}
+                if(t>.85f&&!held){held=core.BeginGrab("face-probe",out token);a.PreviewEmotion="害羞";}
+                if(held&&!released){core.MoveGrab("face-probe",token,new Core.Vec3(basePos.X,basePos.Y+Mathf.Min(.07f,(t-.85f)*.25f),basePos.Z));live.RefreshSpatialState();}
+                if(held&&!released&&t>1f)a.PreviewEmotion="心动";
+                if(held&&!released&&t>4.4f){core.ReleaseGrabWithDescent("face-probe",token,core.LastSafePosition);released=true;live.RefreshSpatialState();}
+                var e=a.Instance.Runtime.Expression;float aa=e.GetWeight(ExpressionKey.Aa);
+                if(t>1.35f&&t<4.3f)heldPeak=Mathf.Max(aa,heldPeak);
+                pauseOwned|=t>2.68f&&t<3.08f&&a.MouthOwner=="角色语音"&&aa<.03f;
+                shortShock|=held&&!released&&e.GetWeight(ExpressionKey.CreateCustom("mouthOpenCircle"))>.9f;
+                var name="frame-"+trace.Count.ToString("D4")+".png";
+                trace.Add(new JObject{["time"]=t,["aa"]=aa,["mouth"]=a.MouthOwner,["state"]=core.State.ToString(),["file"]=name});
+                Alpha2Probe.Capture(cam,Path.Combine(Output,name));yield return null;
+            }
+            File.WriteAllText(Path.Combine(Output,"timeline.json"),trace.ToString());
+            Check(shortShock&&heldPeak>.025f,"提起惊讶后仍持有并重新发音");
+            Check(pauseOwned,"句内停顿嘴合上仍由音频占用");
+                        Check(core.State==Core.PetState.Idle&&a.PreviewEmotion=="心动"&&a.MouthOwner=="当前心情","落稳恢复最新表情");
+            Check(voice.PlayReaction(clip),"再次起播");long prior=voice.Generation;
+            voice.Stop();Check(voice.PlayReaction(clip),"旧音频停止后新样句起播");
+            for(int i=0;i<4;i++)yield return null;
+            Check(voice.Generation>prior&&voice.IsPlaying&&a.MouthOwner=="角色语音","旧播放周期不会清除新语音");
+            voice.Stop();
+            var change=live.SwitchCharacterAsync("local-physics-reference");while(!change.IsCompleted)yield return null;
+            Check(change.Result&&!live.Avatar.UsesMouth24Face&&live.Avatar.PreviewEmotion==null,"旧鱼使用标准回退并清空旧手动心情");
+        }
         public static void RunOral(){work=OralComparison();Run();}
         static IEnumerator OralComparison()
         {
