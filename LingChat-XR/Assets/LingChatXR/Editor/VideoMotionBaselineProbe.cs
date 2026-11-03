@@ -186,6 +186,9 @@ namespace LingChatXR.Editor
                     Check(float.IsFinite(q.x*q.x+q.y*q.y+q.z*q.z+q.w*q.w),label+": generated finite pose "+frame+" "+pair.Key);
                 }
                 if(capture)Capture(camera,Path.Combine(output,"front-"+frame.ToString("D3")+".png"));
+                if(capture&&Environment.GetEnvironmentVariable("XR_COMPARE_WAVE")=="1"){
+                    View(new Vector3(.6f,.12f,0));Capture(camera,Path.Combine(output,"side-"+frame.ToString("D3")+".png"));View(new Vector3(0,.12f,.6f));
+                }
                 if(capture&&frame==count/2)
                 {
                     View(new Vector3(.6f,.12f,0));Capture(camera,Path.Combine(output,"side.png"));
@@ -199,6 +202,17 @@ namespace LingChatXR.Editor
             }
             Check(high-low>.00001f,label+": local hips excursion preserved");
             File.WriteAllText(Path.Combine(output,"package-playback.json"),new JObject{["samples"]=samples,["hipsLocalYRange"]=high-low,["worldRootPolicy"]="external",["bodyOnly"]=true}.ToString());
+            if(Environment.GetEnvironmentVariable("XR_COMPARE_WAVE")=="1")
+            {
+                player.Stop(true);
+                var prefs=new XrMotionPreferences{enabled=true};prefs.items["wave_normal_right_661"]=true;player.ApplyPreferences(prefs);
+                var wave=player.Play("wave_normal_right_661");while(!wave.IsCompleted)yield return null;
+                Check(wave.Result,"author wave comparison");
+                for(int frame=0;frame<200 && player.ActiveId!=null;frame++){
+                    player.Step(1f/20);avatar.Instance.Runtime.Process();
+                    Capture(camera,Path.Combine(output,"authored-"+frame.ToString("D3")+".png"));
+                }
+            }
             // Pause keeps the same source time; resume/cancel remain with the existing player owner.
             play=player.PreviewPackage(packagePath);while(!play.IsCompleted)yield return null;Check(play.Result,label+": package replay");
             player.Step(.2f);var beforePause=player.InspectPlayback().sourceTime;player.Step(0);
