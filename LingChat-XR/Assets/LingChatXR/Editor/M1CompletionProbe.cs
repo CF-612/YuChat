@@ -118,6 +118,20 @@ namespace LingChatXR.Editor
                 player.ApplyPreferences(new XrMotionPreferences());Check(!player.Busy,"permissions-off-"+folder);
                 avatar.FreezePresentation=false;
             }
+            var chat=UnityEngine.Object.FindAnyObjectByType<XrChatController>();
+            var queue=(LingChatXR.Core.DialogueQueue)typeof(XrChatController).GetField("queue",System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Instance).GetValue(chat);
+            foreach(var failure in new[]{"translation","synthesis"})
+            {
+                queue.Begin("fixture","feiyu",failure,10);
+                var evt=new ChatEvent{sessionId="fixture",roleId="feiyu",turnId=failure,generation=10,kind="text",message="还在这里。"};
+                chat.Accept(evt);
+                evt.kind="sentenceError";evt.message=failure;evt.emotion="开心";evt.motion="点头";
+                chat.Accept(evt);chat.Accept(evt);
+                var cue=queue.Take();
+                Check(cue!=null&&cue.Failed&&cue.Text=="还在这里。"&&cue.Emotion=="开心"&&cue.Motion=="点头","silent-cue-keeps-presentation-"+failure);
+                queue.Complete();Check(queue.Empty,"duplicate-error-does-not-repeat-"+failure);
+                queue.Cancel();
+            }
         }
         static void Log(string message,string stack,LogType type)
         { if(type==LogType.Exception || type==LogType.Error) File.AppendAllText(Path.Combine(Evidence,"runtime-errors.txt"),message+"\n"+stack+"\n"); }

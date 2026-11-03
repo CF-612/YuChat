@@ -347,7 +347,7 @@ namespace LingChatXR.Chat
                 case "audio": queue.Add(item.sessionId, item.roleId, item.turnId, item.generation, new DialogueQueue.Cue { Index = item.index, Text = item.message, Audio = item.audioFile, Emotion = item.emotion, Motion = item.motion }); break;
                 case "sentenceError":
                     retryTurn = item.turnId; retryIndex = item.index;
-                    queue.Add(item.sessionId, item.roleId, item.turnId, item.generation, new DialogueQueue.Cue { Index = item.index, Text = textByIndex.TryGetValue(item.index, out var text) ? text : "", Failed = true });
+                    queue.Add(item.sessionId, item.roleId, item.turnId, item.generation, new DialogueQueue.Cue { Index = item.index, Text = textByIndex.TryGetValue(item.index, out var text) ? text : "", Emotion=item.emotion, Motion=item.motion, Failed = true });
                     Status = item.message; break;
                 case "streamEnd": queue.End(); break;
                 case "error": Status = item.message; Thinking = false; Effects.Stop(); break;
@@ -398,6 +398,7 @@ namespace LingChatXR.Chat
             writer.Start(currentCue.Text,appendNext); motionWriter.Start(currentCue.Motion??"");
             Subtitle=writer.Text; if(!appendNext)PresentationRevision++; appendNext=false;
             if(!replaying)history.Add(new ChatRow{speaker="assistant",text=currentCue.Text});
+            TryStageDecision();
             Status=currentCue.Failed?"语音暂不可用 · 可阅读文字或重试语音":"播放中"; Notify();
         }
         private void FailCue()
@@ -423,7 +424,7 @@ namespace LingChatXR.Chat
         private void OnVoice(VoiceKind kind, VoiceOutcome outcome, long generation)
         {
             if (kind != VoiceKind.Dialogue) return;
-            if(outcome==VoiceOutcome.Started) { BeginPresentation();TryStageDecision(); return; }
+            if(outcome==VoiceOutcome.Started) { BeginPresentation(); return; }
             if (outcome == VoiceOutcome.Completed || outcome == VoiceOutcome.Failed || outcome == VoiceOutcome.Cancelled)
             {
                 voiceEnded=true;
@@ -434,7 +435,7 @@ namespace LingChatXR.Chat
         private void TryStageDecision()
         {
             // 接收和显示可能错序；只消费实际正在播放的句段，超时/切模型/重放均不追补。
-            if(currentCue==null||!Voice.IsPlaying||motionAvatar==null||!stageDecisions.TryGetValue(currentCue.Index,out var decision))return;
+            if(currentCue==null||!presentationStarted||(!currentCue.Failed&&!Voice.IsPlaying)||motionAvatar==null||!stageDecisions.TryGetValue(currentCue.Index,out var decision))return;
             stageDecisions.Remove(currentCue.Index);
             var stage=FindAnyObjectByType<FeiyuPreview>();
             if(stage==null||stage.Avatar!=motionAvatar||Time.unscaledTime-decision.arrived>10)return;
