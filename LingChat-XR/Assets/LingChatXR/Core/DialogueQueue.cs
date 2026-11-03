@@ -31,7 +31,18 @@ namespace LingChatXR.Core
             pending.Remove(NextIndex++); Playing = true; return cue;
         }
         public void Complete() => Playing = false;
-        public void End() => Ended = true;
+        public bool End(int expectedEnd=0)
+        {
+            Ended=true;
+            int contiguous=NextIndex;
+            foreach(int index in pending.Keys)
+            {
+                if(index!=contiguous)return false;
+                contiguous++;
+            }
+            // 旧宿主没有尾标，只能核对已经收到的区间。
+            return expectedEnd==0 || contiguous==expectedEnd;
+        }
         public void Cancel() { Generation++; pending.Clear(); accepted.Clear(); Playing = false; Ended = true; }
     }
 }

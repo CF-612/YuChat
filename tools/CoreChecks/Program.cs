@@ -113,6 +113,14 @@ internal static class Program
         q.End(); Check(!q.Empty, "stream end is not speech end");
         q.Complete(); Check(q.Take().Text == "second", "advance only after completion");
         q.Complete(); Check(q.Empty && q.Ended, "finished playback queue");
+        var gap=new DialogueQueue();
+        gap.Begin("session","fish","turn",5);
+        gap.Add("session","fish","turn",5,new DialogueQueue.Cue{Index=1});
+        Check(!gap.End(2),"detect missing first cue at stream end");
+        gap.Begin("session","fish","turn",6,2);
+        Check(!gap.End(3),"detect missing terminal retry cue");
+        gap.Add("session","fish","turn",6,new DialogueQueue.Cue{Index=2});
+        Check(gap.End(3),"retry can start at a nonzero index");
         q.Cancel(); Check(!q.Add("session", "fish", "turn", 2, new DialogueQueue.Cue { Index = 2 }), "cancel rejects delayed audio");
         q.Begin("new-session", "other", "new-turn", 3);
         Check(q.Empty && !q.Ended, "switch clears old queue");

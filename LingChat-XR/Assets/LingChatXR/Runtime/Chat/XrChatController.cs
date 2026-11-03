@@ -19,7 +19,7 @@ namespace LingChatXR.Chat
     [Serializable] public sealed class TurnReply { public string turnId; public long generation; }
     [Serializable] public sealed class StageDecision { public string action; public string reason; }
     [Serializable] public sealed class StageCandidate { public string id; public string label; public bool persistent; }
-    [Serializable] public sealed class ChatEvent { public int cursor; public string sessionId; public string roleId; public string turnId; public long generation; public int index; public string kind; public string message; public string audioFile; public string emotion; public string motion; public StageDecision stageAction; public string stageRequestId; }
+    [Serializable] public sealed class ChatEvent { public int cursor; public string sessionId; public string roleId; public string turnId; public long generation; public int index; public int sentenceEndExclusive; public string kind; public string message; public string audioFile; public string emotion; public string motion; public StageDecision stageAction; public string stageRequestId; }
     [Serializable] public sealed class EventReply { public ChatEvent[] events; public bool cursorExpired; public int cursor; public int historyBefore; public ChatRow[] history; }
     [Serializable] internal sealed class OpenRequest { public string roleId; public int historyLimit=50; }
     [Serializable] internal sealed class TurnRequest { public string sessionId; public string text; public bool testVoice; public string retryTurn; public int retryIndex; public bool director; public StageCandidate[] available; public string style; public string previousPose; }
@@ -381,7 +381,13 @@ namespace LingChatXR.Chat
                     retryTurn = item.turnId; retryIndex = item.index;
                     queue.Add(item.sessionId, item.roleId, item.turnId, item.generation, new DialogueQueue.Cue { Index = item.index, Text = textByIndex.TryGetValue(item.index, out var text) ? text : "", Emotion=item.emotion, Motion=item.motion, Failed = true });
                     Status = item.message; break;
-                case "streamEnd": queue.End(); break;
+                case "streamEnd":
+                    if(!queue.End(item.sentenceEndExclusive))
+                    {
+                        StopGeneration(queue.Generation);
+                        Status="本轮回复缺少句段，播放已结束，可重新连接查看记录";
+                    }
+                    break;
                 case "error": Status = item.message; Thinking = false; Effects.Stop(); break;
                 case "thinkingProgress": if (Thinking) Status = "小肥鱼正在思考…（已思考 " + item.message + " 字）"; break;
                 default: if (currentCue == null) Status = item.kind == "synthesizing" || item.kind == "translating" ? "正在准备语音…" : "小肥鱼正在思考…"; break;

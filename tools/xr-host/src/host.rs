@@ -13,7 +13,7 @@ pub struct Sentence { pub turn_id:String, pub index:usize, pub message:String, p
 pub struct History { pub speaker:String, pub text:String }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all="camelCase")]
-pub struct Event { pub cursor:usize, pub session_id:String, pub role_id:String, pub turn_id:String, pub generation:u64, pub index:usize, pub kind:String, pub message:String, pub audio_file:String, pub emotion:String, pub motion:String, #[serde(default)] pub stage_action:Option<crate::stage_action::Decision>, #[serde(default)] pub stage_request_id:String }
+pub struct Event { pub cursor:usize, pub session_id:String, pub role_id:String, pub turn_id:String, pub generation:u64, #[serde(default)] pub sentence_end_exclusive:usize, pub index:usize, pub kind:String, pub message:String, pub audio_file:String, pub emotion:String, pub motion:String, #[serde(default)] pub stage_action:Option<crate::stage_action::Decision>, #[serde(default)] pub stage_request_id:String }
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all="camelCase")]
 pub struct Session { pub id:String, pub role_id:String, pub generation:u64, pub history:Vec<History>, pub sentences:Vec<Sentence>, #[serde(skip)] pub events:Vec<Event>, #[serde(skip)] pub busy:bool, #[serde(skip)] cancel:Option<tokio::sync::oneshot::Sender<()>> }
@@ -35,7 +35,8 @@ impl Host {
             let cursor=s.events.last().map_or(1,|e|e.cursor+1);
             let sentence=s.sentences.iter().rev().find(|x|x.turn_id==turn&&x.index==index);
             let emotion=sentence.map(|x|x.emotion.clone()).unwrap_or_default();let motion=sentence.map(|x|x.motion.clone()).unwrap_or_default();
-            s.events.push(Event{cursor,session_id:id.into(),role_id:s.role_id.clone(),turn_id:turn.into(),generation:g,index,kind:kind.into(),message:message.into(),audio_file:audio.into(),emotion,motion,stage_action:None,stage_request_id:String::new()});
+            let sentence_end_exclusive=if kind=="streamEnd" {s.sentences.iter().rev().take_while(|x|x.turn_id==turn).map(|x|x.index+1).max().unwrap_or(0)}else{0};
+            s.events.push(Event{cursor,sentence_end_exclusive,session_id:id.into(),role_id:s.role_id.clone(),turn_id:turn.into(),generation:g,index,kind:kind.into(),message:message.into(),audio_file:audio.into(),emotion,motion,stage_action:None,stage_request_id:String::new()});
             if s.events.len()>1024 {s.events.remove(0);}
         }
     }
@@ -200,7 +201,7 @@ async fn run(h:Shared,id:String,g:u64,turn:String,role:String,history:Vec<Histor
                         let mut all=host.sessions.lock().await;
                         if let Some(s)=all.get_mut(&session).filter(|s|s.generation==g){
                             let cursor=s.events.last().map_or(1,|e|e.cursor+1);
-                            s.events.push(Event{cursor,session_id:session,role_id:s.role_id.clone(),turn_id:turn.clone(),generation:g,index:0,kind:"stageAction".into(),message:String::new(),audio_file:String::new(),emotion:String::new(),motion:String::new(),stage_action:Some(decision),stage_request_id:format!("{turn}:0")});
+                            s.events.push(Event{cursor,sentence_end_exclusive:0,session_id:session,role_id:s.role_id.clone(),turn_id:turn.clone(),generation:g,index:0,kind:"stageAction".into(),message:String::new(),audio_file:String::new(),emotion:String::new(),motion:String::new(),stage_action:Some(decision),stage_request_id:format!("{turn}:0")});
                         }
                     });
                 }
