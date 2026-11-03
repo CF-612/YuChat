@@ -67,6 +67,29 @@ namespace LingChatXR.Editor
             var change=live.SwitchCharacterAsync("local-physics-reference");while(!change.IsCompleted)yield return null;
             Check(change.Result&&!live.Avatar.UsesMouth24Face&&live.Avatar.PreviewEmotion==null,"旧鱼使用标准回退并清空旧手动心情");
         }
+        public static void RunSelectedMotions(){work=SelectedMotions();Run();}
+        static IEnumerator SelectedMotions()
+        {
+            var live=UnityEngine.Object.FindAnyObjectByType<FeiyuPreview>();live.ManualInput=true;
+            while(!live.Ready)yield return null;
+            live.Place(Vector3.zero);yield return null;
+            var a=live.Avatar;var p=a.Motions;while(!p.CatalogReady.IsCompleted)yield return null;
+            var items=p.Catalog.Where(x=>x.id.StartsWith("kay_")||x.id.StartsWith("ual2_")).ToArray();
+            Check(items.Length==9,"新增九个条目");a.FreezePresentation=true;
+            foreach(var item in items){
+                p.Stop(true);p.SetSpatialAllowed(true);var task=p.Play(item.id);while(!task.IsCompleted)yield return null;
+                Check(task.Result,"VRMA 实际导入 "+item.id+" "+p.Status);
+                var hips=a.Instance.Runtime.ControlRig.GetBoneTransform(HumanBodyBones.Hips);
+                float low=float.PositiveInfinity,high=float.NegativeInfinity;
+                for(int f=0;f<90;f++){
+                    p.Step(1f/60);a.Instance.Runtime.Process();
+                    high=Mathf.Max(high,hips.position.y);low=Mathf.Min(low,hips.position.y);
+                    if(f==25)Alpha2Probe.Capture(live.ViewCamera,Path.Combine(Output,item.id+".png"));
+                }
+                if(item.preserveHeight)Check(high-low>.002f,"起跳髋部有位移 "+item.id);
+            }
+        }
+
         public static void RunStickers(){work=Stickers();Run();}
         static IEnumerator Stickers()
         {

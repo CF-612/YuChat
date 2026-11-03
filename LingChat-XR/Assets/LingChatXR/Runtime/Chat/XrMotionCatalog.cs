@@ -13,7 +13,7 @@ namespace LingChatXR.Chat
     public sealed class XrMotionAsset
     {
         public string id,label,kind,style,asset,sha256,license;
-        public bool loop;
+        public bool loop,preserveHeight;
         public string[] approvedModels;
         public JObject daily;
         public XrPoseLoop poseLoop;

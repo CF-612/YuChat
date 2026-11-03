@@ -316,7 +316,7 @@ namespace LingChatXR.Chat
                     Snapshot(source);
                 }
             }
-            if(activeAsset.poseLoop==null||poseExitAge>=0){Sample(action,Mathf.Min(sampleClock,action.animation.length));Snapshot(source);}
+            if(activeAsset.poseLoop==null||poseExitAge>=0){Sample(action,Mathf.Min(sampleClock,action.animation.length),activeAsset.preserveHeight);Snapshot(source);}
             float sampledHipsY=hips.localPosition.y;
             // 一次性动作相对于自身首帧的旋转变化叠到当前待机；循环待机和声明姿势仍保留作者绝对姿态。
             if(activeAsset.poseLoop==null&&(!action.generated||action.relativeToIdle))for(int i=0;i<bones.Length;i++)source[i]=XrMotionTransition.RelativeToIdle(source[i],action.start[i],frameBase[i]);
