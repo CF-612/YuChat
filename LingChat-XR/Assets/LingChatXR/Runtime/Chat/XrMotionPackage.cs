@@ -27,8 +27,9 @@ namespace LingChatXR.Chat
         // 仅在隔离实验中调用；请求发出时记录动作代次。
         public async Task<bool> TryGeneratedPrototype(Task<string> result)
         {
+            if(disposed||!spatialAllowed||GrabbedActive||LocomotionActive)return false;
             int ticket=++generation;
-            Loading=false;pendingOwner=null;
+            Loading=false;pendingOwner=null;PackageLastError=null;
             try
             {
                 string folder=await result;

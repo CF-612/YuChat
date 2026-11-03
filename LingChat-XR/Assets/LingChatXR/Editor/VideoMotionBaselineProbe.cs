@@ -191,7 +191,10 @@ namespace LingChatXR.Editor
                     View(new Vector3(.6f,.12f,0));Capture(camera,Path.Combine(output,"side.png"));
                     View(new Vector3(0,.12f,-.6f));Capture(camera,Path.Combine(output,"back.png"));View(new Vector3(0,.12f,.6f));
                 }
-                samples.Add(new JObject{["frame"]=frame,["sourceTimeSec"]=clock.sourceTime,["hipsLocalY"]=hips.localPosition.y});
+                avatar.Instance.TryGetBoneTransform(HumanBodyBones.RightHand,out var wrist);
+                avatar.Instance.TryGetBoneTransform(HumanBodyBones.RightUpperArm,out var shoulder);
+                samples.Add(new JObject{["frame"]=frame,["sourceTimeSec"]=clock.sourceTime,["hipsLocalY"]=hips.localPosition.y,
+                    ["rightHandAboveShoulderMeters"]=wrist.position.y-shoulder.position.y});
                 yield return null;
             }
             Check(high-low>.00001f,label+": local hips excursion preserved");
