@@ -21,7 +21,7 @@ pub struct VoiceQueue { slots:tokio::sync::Semaphore, engine:Mutex<()> }
 impl Default for VoiceQueue {
     fn default()->Self {Self{slots:tokio::sync::Semaphore::new(8),engine:Mutex::new(())}}
 }
-pub struct Host { pub voice_queue:VoiceQueue, pub token:String, pub root:PathBuf, pub llm:RwLock<Arc<LlmClient>>, pub settings_path:Option<PathBuf>, pub translator:Translator, pub voice:Arc<dyn TtsAdapter>, pub sessions:Mutex<HashMap<String,Session>> }
+pub struct Host { pub store_writer:Mutex<()>, pub voice_queue:VoiceQueue, pub token:String, pub root:PathBuf, pub llm:RwLock<Arc<LlmClient>>, pub settings_path:Option<PathBuf>, pub translator:Translator, pub voice:Arc<dyn TtsAdapter>, pub sessions:Mutex<HashMap<String,Session>> }
 pub type Shared = Arc<Host>;
 type ApiResult = Result<Json<Value>,(StatusCode,&'static str)>;
 pub fn auth(h:&Host,headers:&HeaderMap)->Result<(),(StatusCode,&'static str)> {
@@ -40,8 +40,17 @@ impl Host {
         }
     }
     async fn persist(&self) -> anyhow::Result<()> {
-        let sessions=self.sessions.lock().await;
-        let data=serde_json::to_vec(&*sessions)?;
+        // 先取得写入顺序再取快照，避免慢写入覆盖较新的会话。
+        let _writer=self.store_writer.lock().await;
+        let snapshot:HashMap<_,_>={
+            let sessions=self.sessions.lock().await;
+            sessions.iter().map(|(key,s)|(key.clone(),Session {
+                id:s.id.clone(),role_id:s.role_id.clone(),generation:s.generation,
+                history:s.history.clone(),sentences:s.sentences.clone(),
+                events:Vec::new(),busy:false,cancel:None,
+            })).collect()
+        };
+        let data=tokio::task::spawn_blocking(move ||serde_json::to_vec(&snapshot)).await??;
         let path=self.root.join("sessions.json");let temp=self.root.join("sessions.tmp");
         tokio::fs::write(&temp,data).await?;tokio::fs::rename(temp,path).await?; Ok(())
     }
