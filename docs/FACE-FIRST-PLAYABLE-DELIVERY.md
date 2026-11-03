@@ -9,3 +9,7 @@
 效果信号按变化边缘触发一次。旧鱼使用 vee_Question22、vee_Anger Mark、vee_Exclamation；无对应键的模型显示短暂文字标记。已核对桌面项目分通道及效果文件指纹 1C6470A5、FA7EB11D、B4287190、22E99DBE。未确认可单独再分发的 LingChat 疑问、生气和惊讶原动画，当前文字标记是占位。DOT 后续请优先确认特殊眼与 Aa 并发的实际外观、心动眉嘴的安全混合量。
 
 程序断言：evidence/face-first-playable-final/checks.json。验证了语音启动、提起后的 Aa、停顿、落地恢复新心情、替换样句及切到旧模型清除旧预览。真实导演与缓存重播/抓取回归在 evidence/face-director-final。完整画面 evidence/face-first-playable-final/talking-held.mp4，按实际音频播放时钟复用同一 WAV 配音（6.43 秒画面、5.70 秒音轨），不是设备扬声器收音。目视为说话、摸头、斜提、下降和落稳。细微嘴形、符号大小和害羞/心动是否容易区分，由玩家判断。无 Quest 验收或 APK。
+
+## 心情贴纸更新
+
+已用 LingChat 的 public/pictures/animation 动画 WEBP 替换本批早期的文字标记。运行 tools/prepare-mood-stickers.py 并传入 LingChat 源码目录，可从 src/controllers/emotion/config.ts 复用心情映射并生成 Unity 本地图集。生成目录位于被 Git 忽略的 LocalLingChatEffects/Stickers。本机准备了 14 个动画和 26 个心情名称。窗口中选择疑问、生气、惊讶、害羞或心动并点预览即可比较。停留同一心情时仅播放一遍，清除后再选择可重播。隔离 Unity 实际验证五种贴纸换帧、结束隐藏和持续状态不重启，截图位于 evidence/mood-sticker-verified。

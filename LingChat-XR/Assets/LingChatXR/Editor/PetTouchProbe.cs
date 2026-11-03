@@ -67,6 +67,24 @@ namespace LingChatXR.Editor
             var change=live.SwitchCharacterAsync("local-physics-reference");while(!change.IsCompleted)yield return null;
             Check(change.Result&&!live.Avatar.UsesMouth24Face&&live.Avatar.PreviewEmotion==null,"旧鱼使用标准回退并清空旧手动心情");
         }
+        public static void RunStickers(){work=Stickers();Run();}
+        static IEnumerator Stickers()
+        {
+            var live=UnityEngine.Object.FindAnyObjectByType<FeiyuPreview>();live.ManualInput=true;
+            while(!live.Ready)yield return null;
+            live.Place(Vector3.zero);yield return null;
+            foreach(string mood in new[]{"疑问","生气","惊讶","害羞","心动"}){
+                var a=live.Avatar;a.PreviewEmotion=mood;yield return null;yield return null;
+                var sticker=a.GetComponentInChildren<MoodSticker>();var renderer=sticker.GetComponent<SpriteRenderer>();
+                var first=renderer.sprite;int starts=sticker.Starts;
+                float until=Time.unscaledTime+.25f;while(Time.unscaledTime<until)yield return null;
+                Check(renderer.enabled&&first!=renderer.sprite,"原贴纸实际换帧 "+mood+" enabled="+renderer.enabled+" starts="+sticker.Starts+" first="+(first!=null)+" sprite="+(renderer.sprite!=null));
+                Alpha2Probe.Capture(live.ViewCamera,Path.Combine(Output,mood+".png"));
+                until=Time.unscaledTime+12;while(renderer.enabled&&Time.unscaledTime<until)yield return null;yield return null;
+                Check(!renderer.enabled&&starts==sticker.Starts,"持续心情播完隐藏且不重复 "+mood);
+            }
+            live.Avatar.PreviewEmotion=null;
+        }
         public static void RunOral(){work=OralComparison();Run();}
         static IEnumerator OralComparison()
         {

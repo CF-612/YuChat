@@ -56,9 +56,9 @@ namespace LingChatXR
 
         public bool UsesMouth24Face {get;private set;}
         bool spiralAvailable;
-        string stickerSignal;
-        float stickerUntil;
-        TextMesh sticker;
+
+
+        MoodSticker sticker;
         readonly System.Collections.Generic.HashSet<ExpressionKey> faceKeys=new System.Collections.Generic.HashSet<ExpressionKey>();
         float surprisedMouthUntil;
         public string PreviewEmotion {get;set;}
@@ -477,31 +477,15 @@ namespace LingChatXR
             if(presentationHead!=null&&!Motions.HeadOccupied)presentationHead.localRotation*=gazeOffset;
             gaze.position = head.position + transform.TransformDirection(eyeAim * Vector3.forward);
         }
-        static readonly ExpressionKey QuestionMark=ExpressionKey.CreateCustom("vee_Question22"),
-            SurpriseMark=ExpressionKey.CreateCustom("vee_Exclamation"), AngerMark=ExpressionKey.CreateCustom("vee_Anger Mark");
         void UpdateSticker(Vector3 viewer)
         {
-            string mood=PreviewEmotion??(chat!=null&&!chat.Thinking?chat.Emotion:"");
-            string signal=heldReaction||mood=="惊讶"?"!":mood=="疑问"?"?":mood=="生气"?"怒":"";
-            if(signal!=stickerSignal){stickerSignal=signal;stickerUntil=Time.unscaledTime+.65f;}
-            bool on=signal!=""&&Time.unscaledTime<stickerUntil;
-            var key=signal=="?"?QuestionMark:signal=="怒"?AngerMark:SurpriseMark;
-            foreach(var mark in StickerKeys)if(faceKeys.Contains(mark))Instance.Runtime.Expression.SetWeight(mark,on&&key.Equals(mark)?1:0);
-            if(!on||faceKeys.Contains(key)){if(sticker!=null)sticker.gameObject.SetActive(false);return;}
             if(sticker==null){
-                var obj=new GameObject("互动符号");obj.transform.SetParent(transform,false);sticker=obj.AddComponent<TextMesh>();
-                sticker.font=Resources.Load<Font>("Fonts/NotoSansSC");
-                if(sticker.font!=null)obj.GetComponent<MeshRenderer>().sharedMaterial=sticker.font.material;
-                sticker.fontSize=64;sticker.anchor=TextAnchor.MiddleCenter;sticker.color=new Color(.36f,.75f,1);
+                var obj=new GameObject("心情贴纸");obj.transform.SetParent(transform,false);
+                sticker=obj.AddComponent<MoodSticker>();
             }
-            sticker.gameObject.SetActive(true);sticker.text=signal;sticker.characterSize=HeightMeters*.055f;
-            var anchor=head!=null?head.position:transform.position+Vector3.up*HeightMeters;
-            sticker.transform.position=anchor+transform.right*HeightMeters*.32f+Vector3.up*HeightMeters*.18f;
-            var forward=sticker.transform.position-viewer;
-            if(forward.sqrMagnitude>.0001f)sticker.transform.rotation=Quaternion.LookRotation(forward);
+            string mood=heldReaction?"惊讶":PreviewEmotion??(chat!=null&&!chat.Thinking?chat.Emotion:"");
+            sticker.Present(mood,head!=null?head.position:transform.position,viewer,HeightMeters);
         }
-        static readonly ExpressionKey[] StickerKeys={QuestionMark,SurpriseMark,AngerMark};
-
         void ComposeFace(float dt,bool holdFace)
         {
             bool speaking=speech!=null&&speech.IsPlaying;
