@@ -19,6 +19,7 @@ namespace LingChatXR.Editor
         string input="我要走啦，下次见。",decision="",outcome="",prompt="",cache="",action="",submitted="",state="",catalog="";
         string directorStatus="待检查",generatorStatus="待检查";
         int revision,seed,index,interaction; FeiyuAvatar owner;
+        double startedAt;
         bool watching;string previous="";
         Vector2 scroll;
         [MenuItem("YuChat/动作实验/自然语言导演试玩")]
@@ -73,7 +74,9 @@ namespace LingChatXR.Editor
                     player.ApplyPreferences(prefs);
                 }
                 input=EditorGUILayout.TextArea(input,GUILayout.MinHeight(48));
-                if(GUILayout.Button("让导演决定"))_=Run(live,0);
+                if(GUILayout.Button(outcome=="请求中"?"重新提交给导演":"让导演决定"))_=Run(live,0);
+                if(outcome=="请求中"||outcome=="等待生成")
+                    EditorGUILayout.HelpBox((outcome=="请求中"?"已收到输入，正在等待导演":"导演已返回，正在等待本地生成")+" · "+(EditorApplication.timeSinceStartup-startedAt).ToString("0.0")+" 秒",MessageType.Info);
                 if(GUILayout.Button("停止")){revision++;watching=false;player.Stop();outcome="玩家已停止，待返回请求已过期";}
                 using(new EditorGUI.DisabledScope(owner!=live.Avatar||live.Interaction.State!=Core.PetState.Idle||string.IsNullOrEmpty(action))){
                     if(GUILayout.Button("重播本次结果"))_=Run(live,1);
@@ -100,8 +103,11 @@ namespace LingChatXR.Editor
             var player=owner.Motions;var allowed=player.Capabilities();
             bool generate=player.Preferences.enabled && player.Preferences.director && !player.Preferences.items.Any(x=>!x.Value);
             try{
+                startedAt=EditorApplication.timeSinceStartup;
                 if(mode==0){
-                    submitted=input.Trim();state=live.Interaction.State.ToString();action="";cache="";prompt="";decision="等待导演";outcome="请求中";
+                    submitted=input.Trim();state=live.Interaction.State.ToString();action="";cache="";prompt="";decision="等待导演";outcome="请求中";Repaint();
+                    await Task.Yield();
+                    if(!Current(ticket,live))return;
                     if(!player.Preferences.director)throw new InvalidOperationException("请先启用导演许可");
                     catalog=string.Join("、",allowed.Select(x=>x.label+" ("+x.id+")"));
                     using(var req=Request(Connection(),"/playtest/direct")){
@@ -119,7 +125,7 @@ namespace LingChatXR.Editor
                 if(action!="generate"){if(!allowed.Any(x=>x.id==action))throw new InvalidOperationException("动作许可已变化");bool ok=await player.Play(action);if(Current(ticket,live))outcome=ok?"库内播放："+action:"未播放："+player.Status;return;}
                 if(!generate)throw new InvalidOperationException("当前许可禁止生成");
                 string folder=cache;
-                if(mode!=1){seed=Guid.NewGuid().GetHashCode()&int.MaxValue;folder=Path.Combine(Root,".cache/my-neuro-prototype","director-"+Guid.NewGuid().ToString("N"));outcome="等待生成";}
+                if(mode!=1){seed=Guid.NewGuid().GetHashCode()&int.MaxValue;folder=Path.Combine(Root,".cache/my-neuro-prototype","director-"+Guid.NewGuid().ToString("N"));outcome="等待生成";startedAt=EditorApplication.timeSinceStartup;Repaint();}
                 else if(string.IsNullOrEmpty(folder))throw new InvalidOperationException("本次没有可重播的缓存");
                 var package=mode==1?Task.FromResult(folder):T2mPrototypeMenu.Generate(Root,folder,prompt,seed);
                 bool played=await player.TryGeneratedPrototype(package);
