@@ -41,7 +41,8 @@ namespace LingChatXR.Chat
         private ScrollView history;
         private TextField input;
         private Button send, retry, stop, reconnect;
-        private int renderedRows = -1;
+        private int renderedRows = -1,historyPageRevision;
+        private ChatRow firstRenderedRow;
         private static XrChatView active;
         private void Awake()
         {
@@ -173,8 +174,13 @@ namespace LingChatXR.Chat
             wasThinking=controller.Thinking;
             retry.style.display = controller.CanRetry ? DisplayStyle.Flex : DisplayStyle.None;
             Settings?.RefreshStatus(); reconnect.style.display = controller.Connected ? DisplayStyle.None : DisplayStyle.Flex;
-            if (renderedRows == controller.History.Count) return;
+            var first=controller.History.Count>0?controller.History[0]:null;
+            if (renderedRows == controller.History.Count && firstRenderedRow==first) return;
+            firstRenderedRow=first;
+            bool older=controller.HistoryPageRevision!=historyPageRevision;
+            historyPageRevision=controller.HistoryPageRevision;
             history.Clear(); renderedRows = controller.History.Count;
+            if(controller.HasEarlierHistory)history.Add(new Button(controller.LoadEarlierHistory){text="查看更早的对话"});
             if (renderedRows == 0) Text(history, "从第一句问候开始。", "empty-history");
             foreach (var row in controller.History)
             {
@@ -182,7 +188,7 @@ namespace LingChatXR.Chat
                 Text(item, row.speaker == "user" ? "你" : "小肥鱼", row.speaker == "user" ? "user-name" : "assistant-name");
                 Text(item, row.text, "history-body");
             }
-            history.schedule.Execute(() => history.scrollOffset = new Vector2(0, float.MaxValue));
+            history.schedule.Execute(() => history.scrollOffset = new Vector2(0, older?0:float.MaxValue));
         }
         [System.Serializable] private class FrameDurations { public int[] durations; }
         private void RenderSubtitle()

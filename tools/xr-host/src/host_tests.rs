@@ -211,3 +211,19 @@ async fn expired_cursor_returns_history_instead_of_incomplete_event_stream() {
         if gap {assert!(reply["history"].is_array());assert_eq!(reply["events"].as_array().unwrap().len(),0);}
     }
 }
+
+#[tokio::test]
+async fn older_history_pages_are_stable_while_new_rows_arrive() {
+    let voice=Arc::new(VoiceFixture{calls:AtomicUsize::new(0),fail_first:false,gate:None});
+    let h=fixture(vec![],voice).await;
+    h.sessions.lock().await.get_mut("feiyu").unwrap().history=(0..121).map(|i|History{speaker:"assistant".into(),text:i.to_string()}).collect();
+    let mut headers=HeaderMap::new();headers.insert("authorization","Bearer fixture-only".parse().unwrap());
+    let Json(first)=open(State(h.clone()),headers.clone(),Json(Open{role_id:"feiyu".into(),history_limit:Some(50)})).await.unwrap();
+    assert_eq!(first["historyBefore"],71);assert_eq!(first["history"][0]["text"],"71");
+    h.sessions.lock().await.get_mut("feiyu").unwrap().history.push(History{speaker:"user".into(),text:"later".into()});
+    for (before,start) in [(71,21),(21,0)]{
+        let Json(page)=history_page(State(h.clone()),headers.clone(),Query(HistoryPage{session_id:"feiyu".into(),before})).await.unwrap();
+        assert_eq!(page["historyBefore"],start);assert_eq!(page["history"][0]["text"],start.to_string());
+        assert_eq!(page["history"].as_array().unwrap().len(),before-start);
+    }
+}

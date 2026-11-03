@@ -61,14 +61,26 @@ impl Host {
     }
 }
 #[derive(Deserialize)] #[serde(rename_all="camelCase")]
-pub struct Open {role_id:String}
+pub struct Open {role_id:String, history_limit:Option<usize>}
 pub async fn open(State(h):State<Shared>,headers:HeaderMap,Json(req):Json<Open>)->ApiResult {
     auth(&h,&headers)?;
     if req.role_id!="feiyu" && req.role_id!="ling-demo" {return Err((StatusCode::BAD_REQUEST,"Unknown role"));}
     let mut all=h.sessions.lock().await;
     let id=all.values().find(|s|s.role_id==req.role_id).map(|s|s.id.clone()).unwrap_or_else(||Uuid::new_v4().to_string());
     let s=all.entry(id.clone()).or_insert_with(||Session{id,role_id:req.role_id,generation:0,history:vec![],sentences:vec![],events:vec![],cancel:None,busy:false});
-    Ok(Json(json!({"sessionId":s.id,"roleId":s.role_id,"generation":s.generation,"history":s.history,"cursor":s.events.last().map_or(0,|e|e.cursor)})))
+    let start=req.history_limit.map_or(0,|limit|s.history.len().saturating_sub(limit.clamp(1,100)));
+    Ok(Json(json!({"sessionId":s.id,"roleId":s.role_id,"generation":s.generation,"history":&s.history[start..],"historyBefore":start,"cursor":s.events.last().map_or(0,|e|e.cursor)})))
+}
+
+#[derive(Deserialize)] #[serde(rename_all="camelCase")]
+pub struct HistoryPage { pub session_id:String, pub before:usize }
+pub async fn history_page(State(h):State<Shared>,headers:HeaderMap,Query(req):Query<HistoryPage>)->ApiResult {
+    auth(&h,&headers)?;
+    let sessions=h.sessions.lock().await;
+    let s=sessions.get(&req.session_id).ok_or((StatusCode::NOT_FOUND,"Session missing"))?;
+    let end=req.before.min(s.history.len());
+    let start=end.saturating_sub(50);
+    Ok(Json(json!({"historyBefore":start,"history":&s.history[start..end]})))
 }
 #[derive(Deserialize)] #[serde(rename_all="camelCase")]
 pub struct Turn {pub session_id:String, #[serde(default)] pub text:String, #[serde(default)] pub retry_turn:String, #[serde(default)] pub retry_index:usize, #[serde(default)] pub test_voice:bool, #[serde(default)] pub director:bool, #[serde(default)] pub available:Vec<crate::stage_action::Candidate>, #[serde(default)] pub style:String, #[serde(default)] pub previous_pose:String}

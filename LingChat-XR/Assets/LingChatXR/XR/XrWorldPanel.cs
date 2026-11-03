@@ -19,6 +19,7 @@ namespace LingChatXR.XR
         XRKeyboard chestKeyboard;string draftText="";TouchScreenKeyboard systemKeyboard;Canvas composer;InputField draft;Button composeSend;
         public bool ComposerVisible=>composer!=null&&composer.gameObject.activeInHierarchy;
         public InputField ComposerInput=>draft; public Button ComposerSend=>composeSend;Text composeStatus,composeReply;GameObject shortcuts;GameObject header;Text heightValue;Canvas scaleFrame;RectTransform scaleHandle;
+        Button earlierHistory;int historyPageRevision;
         Canvas placementHud;Text placementInstruction;
         GameObject historyPage,pairPage;RectTransform historyContent;ScrollRect historyScroll;InputField messageInput,addressInput,codeInput;Button sendButton,pairButton,historyTab,pairTab;Text pairStatus;int page;string historySnapshot="";
         public InputField MessageInput=>messageInput;
@@ -71,7 +72,8 @@ namespace LingChatXR.XR
             talkButton.gameObject.AddComponent<XrPushToTalkButton>().VoiceInput=VoiceInput;
             Button(d,"继续 / 补全文字",476,282,256,42,()=>chat.ContinueDialogue(),false);
             historyPage=Group(rect,"History",28,150,704,326);
-            var viewport=Group((RectTransform)historyPage.transform,"Viewport",0,0,704,326);viewport.AddComponent<RectMask2D>();var scrollHit=viewport.AddComponent<Image>();scrollHit.color=Color.clear;
+            earlierHistory=Button((RectTransform)historyPage.transform,"查看更早的对话",0,0,230,36,chat.LoadEarlierHistory,false);
+            var viewport=Group((RectTransform)historyPage.transform,"Viewport",0,40,704,286);viewport.AddComponent<RectMask2D>();var scrollHit=viewport.AddComponent<Image>();scrollHit.color=Color.clear;
             historyContent=(RectTransform)Group((RectTransform)viewport.transform,"Rows",0,0,676,0).transform;
             var layout=historyContent.gameObject.AddComponent<VerticalLayoutGroup>();layout.spacing=18;layout.childControlHeight=true;layout.childControlWidth=true;layout.childForceExpandHeight=false;
             historyContent.gameObject.AddComponent<ContentSizeFitter>().verticalFit=ContentSizeFitter.FitMode.PreferredSize;
@@ -330,11 +332,13 @@ namespace LingChatXR.XR
         void Accepted(string value){if(draftText==value){draftText="";if(messageInput.gameObject.activeInHierarchy)messageInput.SetTextWithoutNotify("");if(draft!=null&&draft.gameObject.activeInHierarchy)draft.SetTextWithoutNotify("");if(systemKeyboard!=null)systemKeyboard.text="";if(chestKeyboard!=null&&chestKeyboard.isOpen)chestKeyboard.Open("");}RefreshHistory();}
         void RefreshHistory()
         {
+            earlierHistory.gameObject.SetActive(chat.HasEarlierHistory);
             string snapshot=string.Join("\n",System.Linq.Enumerable.Select(chat.History,row=>row.speaker+":"+row.text));if(snapshot==historySnapshot&&historyContent.childCount>0)return;historySnapshot=snapshot;
             foreach(Transform child in historyContent){child.gameObject.SetActive(false);Destroy(child.gameObject);}
             if(chat.History.Count==0)AddHistoryRow("还没有对话记录。",Muted);
             foreach(var row in chat.History)AddHistoryRow((row.speaker=="user"?"你":"小肥鱼")+"\n"+row.text,row.speaker=="user"?Accent:Ink);
-            Canvas.ForceUpdateCanvases();historyScroll.verticalNormalizedPosition=0;
+            Canvas.ForceUpdateCanvases();historyScroll.verticalNormalizedPosition=historyPageRevision!=chat.HistoryPageRevision?1:0;
+            historyPageRevision=chat.HistoryPageRevision;
         }
         void AddHistoryRow(string value,Color color){var label=Label(historyContent,value,0,0,676,60,21,color);label.verticalOverflow=VerticalWrapMode.Overflow;var layout=label.gameObject.AddComponent<LayoutElement>();layout.preferredHeight=Mathf.Max(50,label.preferredHeight+12);}
         InputField Input(RectTransform parent,string hint,float x,float y,float w,float h)

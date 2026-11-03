@@ -15,13 +15,13 @@ namespace LingChatXR.Chat
     [Serializable] public sealed class HostConnection { public string endpoint; public string token; }
     [Serializable] internal sealed class PairRequest { public string code; }
     [Serializable] public sealed class ChatRow { public string speaker; public string text; }
-    [Serializable] public sealed class SessionReply { public string sessionId; public string roleId; public long generation; public int cursor; public ChatRow[] history; }
+    [Serializable] public sealed class SessionReply { public string sessionId; public string roleId; public long generation; public int cursor; public int historyBefore; public ChatRow[] history; }
     [Serializable] public sealed class TurnReply { public string turnId; public long generation; }
     [Serializable] public sealed class StageDecision { public string action; public string reason; }
     [Serializable] public sealed class StageCandidate { public string id; public string label; public bool persistent; }
     [Serializable] public sealed class ChatEvent { public int cursor; public string sessionId; public string roleId; public string turnId; public long generation; public int index; public string kind; public string message; public string audioFile; public string emotion; public string motion; public StageDecision stageAction; public string stageRequestId; }
-    [Serializable] public sealed class EventReply { public ChatEvent[] events; public bool cursorExpired; public int cursor; public ChatRow[] history; }
-    [Serializable] internal sealed class OpenRequest { public string roleId; }
+    [Serializable] public sealed class EventReply { public ChatEvent[] events; public bool cursorExpired; public int cursor; public int historyBefore; public ChatRow[] history; }
+    [Serializable] internal sealed class OpenRequest { public string roleId; public int historyLimit=50; }
     [Serializable] internal sealed class TurnRequest { public string sessionId; public string text; public bool testVoice; public string retryTurn; public int retryIndex; public bool director; public StageCandidate[] available; public string style; public string previousPose; }
     [Serializable] internal sealed class StopRequest { public string sessionId; public long expectedGeneration; }
 
@@ -36,6 +36,29 @@ namespace LingChatXR.Chat
         public bool Stopping { get; private set; }
         public event Action<string> MessageAccepted;
         public string Role { get; private set; } = "feiyu";
+        int historyBefore;
+        public int HistoryPageRevision {get;private set;}
+        bool fetchingHistory;
+        public bool HasEarlierHistory=>historyBefore>0 && Connected;
+        public void LoadEarlierHistory(){if(HasEarlierHistory&&!fetchingHistory)StartCoroutine(FetchHistory());}
+        IEnumerator FetchHistory()
+        {
+            int before=historyBefore,revision=epoch;
+            fetchingHistory=true;
+            try
+            {
+                using(var scope=Request("/history?sessionId="+Uri.EscapeDataString(session)+"&before="+before))
+                {
+                    yield return scope.Value.SendWebRequest();
+                    if(revision!=epoch||historyBefore!=before)yield break;
+                    if(scope.Value.result!=UnityWebRequest.Result.Success){Status="历史记录加载失败，可重试";yield break;}
+                    var page=JsonUtility.FromJson<SessionReply>(scope.Value.downloadHandler.text);
+                    if(page.history==null||page.historyBefore<0||page.historyBefore+page.history.Length!=before)yield break;
+                    history.InsertRange(0,page.history);historyBefore=page.historyBefore;HistoryPageRevision++;
+                }
+            }
+            finally{fetchingHistory=false;Notify();}
+        }
         public IReadOnlyList<ChatRow> History => history;
         public event Action Changed;
         private readonly List<ChatRow> history = new List<ChatRow>();
@@ -224,7 +247,7 @@ namespace LingChatXR.Chat
                 if (token != epoch) yield break;
                 if (request.result != UnityWebRequest.Result.Success) { Status = "无法连接本地服务 · 可点重新连接"; Connected = false; Notify(); yield break; }
                 var reply = JsonUtility.FromJson<SessionReply>(request.downloadHandler.text);
-                session = reply.sessionId; Role = reply.roleId; cursor = reply.cursor;
+                session = reply.sessionId; Role = reply.roleId; cursor = reply.cursor;historyBefore=reply.historyBefore;
                 history.Clear(); if (reply.history != null) history.AddRange(reply.history);
                 Connected = true; Status = "已连接 · 本地日语声线"; Notify();
                 StartCoroutine(RefreshAsrAvailability());
@@ -327,7 +350,7 @@ namespace LingChatXR.Chat
                         {
                             StopGeneration(queue.Generation);
                             cursor=reply.cursor;
-                            history.Clear();
+                            historyBefore=0;history.Clear();
                             if(reply.history!=null)history.AddRange(reply.history);
                             Status="连接中断过久，本轮播放已结束，已恢复对话记录";
                             Notify();
