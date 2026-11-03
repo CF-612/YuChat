@@ -49,7 +49,7 @@ async fn main()->anyhow::Result<()> {
     let token=uuid::Uuid::new_v4().to_string();
     let asr_settings=std::env::var("XR_ASR_SETTINGS").map(PathBuf::from).unwrap_or_else(|_|settings.clone());
     let asr_routes=asr::router(token.clone(), &asr_settings);
-    let h=Arc::new(host::Host{token:token.clone(),root:root.clone(),llm,translator,voice,settings_path:Some(settings),sessions:Mutex::new(sessions)});
+    let h=Arc::new(host::Host{voice_queue:Default::default(),token:token.clone(),root:root.clone(),llm,translator,voice,settings_path:Some(settings),sessions:Mutex::new(sessions)});
     let port:u16=std::env::var("XR_HOST_PORT").unwrap_or_else(|_|"17861".into()).parse()?;
     let listener=tokio::net::TcpListener::bind(("127.0.0.1",port)).await?;
     std::fs::write(root.parent().unwrap().join("xr-host-connection.json"),serde_json::to_vec(&json!({"endpoint":format!("http://127.0.0.1:{port}"),"token":token}))?)?;

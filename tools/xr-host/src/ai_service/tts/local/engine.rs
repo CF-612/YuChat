@@ -1,7 +1,4 @@
-// In-process SBV2 engine. All synthesis happens in spawn_blocking because
-// ONNX is CPU-bound and `ort::Session` is `!Send + !Sync`; the holder is
-// taken out of the async Mutex, used on the blocking pool, then put back.
-
+// ONNX 推理和声线加载在阻塞线程中执行，由任务持锁访问同一个引擎。
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -148,27 +145,12 @@ impl LocalTtsEngine {
         };
 
         let vid = voice_id.to_string();
-        let _serialize_guard = self.serialize.lock().await;
-
-        let mut guard = self.holder.lock().await;
-        let mut holder = guard.take().ok_or("engine not initialized")?;
-        drop(guard);
-
-        let vid_for_closure = vid.clone();
-        let (holder, load_result) = tokio::task::spawn_blocking(move || {
-            let r = match style_vectors {
-                Some(style_bytes) => holder.load(vid_for_closure, style_bytes, model_bytes),
-                None => holder.load_sbv2file(vid_for_closure, model_bytes),
-            };
-            (holder, r)
-        })
-        .await
-        .map_err(|e| format!("join: {e}"))?;
-        let load_result = load_result.map_err(|e| format!("load_sbv2file: {e}"));
-
-        let mut guard = self.holder.lock().await;
-        *guard = Some(holder);
-        load_result
+        self.with_holder(move |holder| {
+            match style_vectors {
+                Some(styles) => holder.load(vid, styles, model_bytes),
+                None => holder.load_sbv2file(vid, model_bytes),
+            }.map_err(|e| format!("load_sbv2file: {e}"))
+        }).await
     }
 
     /// Synthesize speech to WAV bytes (CPU-bound, runs on blocking pool).
@@ -182,28 +164,23 @@ impl LocalTtsEngine {
         let voice_id = req.voice_id.clone();
         let text = req.text.clone();
 
-        let _serialize_guard = self.serialize.lock().await;
-
-        let mut guard = self.holder.lock().await;
-        let mut holder = guard.take().ok_or("engine not initialized")?;
-        drop(guard);
-
-        let voice_id2 = voice_id.clone();
-        let style_id = req.style_id;
-        let speaker_id = req.speaker_id;
-        let (holder, result) = tokio::task::spawn_blocking(move || {
-            let r = holder.easy_synthesize(&voice_id2, &text, style_id, speaker_id, options);
-            (holder, r)
-        })
-        .await
-        .map_err(|e| format!("join: {e}"))?;
-        let result = result.map_err(|e| format!("synthesize: {e}"));
-
-        let mut guard = self.holder.lock().await;
-        *guard = Some(holder);
-        result
+        self.with_holder(move |holder| {
+            holder.easy_synthesize(&voice_id, &text, req.style_id, req.speaker_id, options)
+                .map_err(|e| format!("synthesize: {e}"))
+        }).await
     }
 
+    async fn with_holder<T: Send + 'static>(&self,
+        job: impl FnOnce(&mut TTSModelHolder) -> Result<T, String> + Send + 'static,
+    ) -> Result<T, String> {
+        let exclusive = self.serialize.clone().lock_owned().await;
+        let mut slot = self.holder.clone().lock_owned().await;
+        tokio::task::spawn_blocking(move || {
+            // 请求方退出后，阻塞任务仍持有两把锁，直到推理实际结束。
+            let _exclusive = exclusive;
+            job(slot.as_mut().ok_or("engine not initialized")?)
+        }).await.map_err(|e| format!("join: {e}"))?
+    }
     /// 卸载全部 voice 模型与引擎（DeBERTa/tokenizer/所有 session），释放内存。
     /// 关闭本地 TTS 时调用；重新启用需重新 `init`。
     pub async fn unload_all(&self) {

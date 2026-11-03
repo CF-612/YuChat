@@ -17,7 +17,11 @@ pub struct Event { pub cursor:usize, pub session_id:String, pub role_id:String, 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all="camelCase")]
 pub struct Session { pub id:String, pub role_id:String, pub generation:u64, pub history:Vec<History>, pub sentences:Vec<Sentence>, #[serde(skip)] pub events:Vec<Event>, #[serde(skip)] pub busy:bool }
-pub struct Host { pub token:String, pub root:PathBuf, pub llm:RwLock<Arc<LlmClient>>, pub settings_path:Option<PathBuf>, pub translator:Translator, pub voice:Arc<dyn TtsAdapter>, pub sessions:Mutex<HashMap<String,Session>> }
+pub struct VoiceQueue { slots:tokio::sync::Semaphore, engine:Mutex<()> }
+impl Default for VoiceQueue {
+    fn default()->Self {Self{slots:tokio::sync::Semaphore::new(8),engine:Mutex::new(())}}
+}
+pub struct Host { pub voice_queue:VoiceQueue, pub token:String, pub root:PathBuf, pub llm:RwLock<Arc<LlmClient>>, pub settings_path:Option<PathBuf>, pub translator:Translator, pub voice:Arc<dyn TtsAdapter>, pub sessions:Mutex<HashMap<String,Session>> }
 pub type Shared = Arc<Host>;
 type ApiResult = Result<Json<Value>,(StatusCode,&'static str)>;
 pub fn auth(h:&Host,headers:&HeaderMap)->Result<(),(StatusCode,&'static str)> {
@@ -180,9 +184,20 @@ async fn synthesize(h:&Shared,id:&str,g:u64,turn:&str,sentence:&mut Sentence,rep
         if !h.current(&id,g).await{return;}let mut error="";
         if !japanese(&sentence.tts_text){error="翻译未完成，中文已保留，可重试语音";}else if sentence.audio_file.is_empty() {
             h.event(&id,g,&turn,sentence.index,"synthesizing","合成中","").await;
-            match h.voice.generate_voice(&sentence.tts_text,"").await {
-                Ok(bytes) if bytes.starts_with(b"RIFF")=> {let file=format!("{}.wav",Uuid::new_v4());if tokio::fs::write(h.root.join("audio").join(&file),bytes).await.is_ok(){sentence.audio_file=file;}else{error="语音缓存写入失败";}},
-                _=>error="语音合成失败，文字已保留，可重试语音"
+            if let Ok(_slot)=h.voice_queue.slots.try_acquire() {
+                let _engine=h.voice_queue.engine.lock().await;
+                if !h.current(id,g).await{return;}
+                match h.voice.generate_voice(&sentence.tts_text,"").await {
+                    Ok(bytes) if bytes.starts_with(b"RIFF")=> {
+                        if !h.current(id,g).await{return;}
+                        let file=format!("{}.wav",Uuid::new_v4());
+                        if tokio::fs::write(h.root.join("audio").join(&file),bytes).await.is_ok(){sentence.audio_file=file;}
+                        else{error="语音缓存写入失败";}
+                    }
+                    _=>error="语音合成失败，文字已保留，可重试语音"
+                }
+            } else {
+                error="语音队列已满，文字已保留，可重试语音";
             }
         }
         if !h.current(&id,g).await{return;}

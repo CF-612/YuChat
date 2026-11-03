@@ -25,7 +25,7 @@ async fn fixture(replies:Vec<&str>,voice:Arc<VoiceFixture>)->Shared {
     let root=std::env::temp_dir().join(format!("xr-host-test-{}",Uuid::new_v4()));tokio::fs::create_dir_all(root.join("audio")).await.unwrap();
     let mut sessions=HashMap::new();
     for role in ["feiyu","ling-demo"] {sessions.insert(role.into(),Session{id:role.into(),role_id:role.into(),generation:1,history:vec![],sentences:vec![],events:vec![],busy:true});}
-    Arc::new(Host{token:"fixture-only".into(),root,llm:RwLock::new(client.clone()),settings_path:None,translator:Translator::new(Arc::new(RwLock::new(Some(client))),true),voice,sessions:Mutex::new(sessions)})
+    Arc::new(Host{voice_queue:Default::default(),token:"fixture-only".into(),root,llm:RwLock::new(client.clone()),settings_path:None,translator:Translator::new(Arc::new(RwLock::new(Some(client))),true),voice,sessions:Mutex::new(sessions)})
 }
 fn request()->Turn {Turn{session_id:"feiyu".into(),text:"".into(),retry_turn:"".into(),retry_index:0,test_voice:false,director:false,available:vec![],style:"normal".into(),previous_pose:String::new()}}
 
@@ -142,4 +142,32 @@ async fn replay(h:Shared,g:u64,turn:&str,s:Sentence){run(h,"feiyu".into(),g,turn
     h.sessions.lock().await.get_mut("feiyu").unwrap().generation=2;
     gate.notify_one();task.await.unwrap();h.finish("feiyu",1,"old").await;
     let all=h.sessions.lock().await;assert!(all["feiyu"].busy);assert!(!all["feiyu"].events.iter().any(|e|e.kind=="audio"||e.kind=="streamEnd"));assert!(all["feiyu"].sentences.is_empty());
+}
+
+#[tokio::test]
+async fn full_voice_queue_rejects_overflow_and_skips_cancelled_jobs() {
+    let voice=Arc::new(VoiceFixture{calls:AtomicUsize::new(0),fail_first:false,gate:None});
+    let h=fixture(vec![],voice.clone()).await;
+    let engine=h.voice_queue.engine.lock().await;
+    let mut waiting=Vec::new();
+    for i in 0..8 {
+        let host=h.clone();
+        waiting.push(tokio::spawn(async move {
+            let mut sentence=Sentence{index:i,tts_text:"こんにちは".into(),..Default::default()};
+            synthesize(&host,"feiyu",1,"old",&mut sentence,false).await;
+        }));
+    }
+    tokio::time::timeout(std::time::Duration::from_secs(3),async {
+        while h.voice_queue.slots.available_permits()!=0 {tokio::task::yield_now().await;}
+    }).await.unwrap();
+    let mut next=Sentence{index:8,tts_text:"こんにちは".into(),..Default::default()};
+    synthesize(&h,"feiyu",1,"old",&mut next,false).await;
+    assert!(h.sessions.lock().await["feiyu"].events.iter().any(|e|e.kind=="sentenceError" && e.message.contains("队列已满")));
+    h.sessions.lock().await.get_mut("feiyu").unwrap().generation=2;
+    drop(engine);
+    for task in waiting {task.await.unwrap();}
+    assert_eq!(voice.calls.load(Ordering::SeqCst),0);
+    synthesize(&h,"feiyu",2,"new",&mut next,false).await;
+    assert_eq!(voice.calls.load(Ordering::SeqCst),1);
+    assert!(!next.audio_file.is_empty());
 }
