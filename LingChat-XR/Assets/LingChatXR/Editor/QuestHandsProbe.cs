@@ -343,7 +343,14 @@ namespace LingChatXR.Editor
             }
             walk.Cancel(true);
             QuestQualityCapture.Run(entry,Output);
-            entry.Suspend();Check(!entry.Preview.Interaction.PlaneConfirmed,"head-tracking-loss-invalidates-table");
+            Check(entry.TableLocked,"table-locked-before-tracking-events");
+            var trackingFlags=BindingFlags.Instance|BindingFlags.NonPublic;
+            typeof(QuestEntry).GetMethod("OriginChanged",trackingFlags).Invoke(entry,new object[]{null});
+            Check(entry.TableLocked,"origin-update-keeps-table");
+            var lostHead=new UnityEngine.XR.XRNodeState {nodeType=UnityEngine.XR.XRNode.Head};
+            typeof(QuestEntry).GetMethod("TrackingLost",trackingFlags).Invoke(entry,new object[]{lostHead});
+            Check(entry.TableLocked,"head-tracking-loss-keeps-table");
+            entry.Suspend();Check(!entry.Preview.Interaction.PlaneConfirmed,"explicit-suspend-invalidates-table");
         }
         static void Finish(int code)
         {
