@@ -74,6 +74,7 @@ namespace LingChatXR.Editor
                 if(live.ActivePackageFolder!=folder){var task=live.SwitchCharacterAsync(folder);while(!task.IsCompleted)yield return null;Check(task.Result,"切模型 "+folder);}
                 live.PlaceOnPlane(new Vector3(0,.74f,0),.55f,.42f,new Vector3(0,.74f,0),0);yield return null;
                 var a=live.Avatar;a.FreezePresentation=true;var scale=a.Instance.transform.localScale;var pos=a.Instance.transform.localPosition;float height=a.HeightMeters;
+                a.Physics.Prepare();int rebuilds=a.Physics.ScaleRebuildCount;
                 Check(a.TouchSound.Ready,"原版pet音效可用 "+folder);
                 a.SetFeedback(true,false);var point=a.TouchProxy.transform.position;
                 for(int i=0;i<45;i++){a.SampleTouch(point-Vector3.up*Mathf.Min(i,20)*height*.001f);a.FreezePresentation=false;a.Present(live.ViewCamera.transform.position);a.Instance.Runtime.Process();a.FreezePresentation=true;yield return null;}
@@ -101,6 +102,10 @@ namespace LingChatXR.Editor
                 a.SetFeedback(false,false); bool rebounded=false;
                 for(int i=0;i<100;i++){a.FreezePresentation=false;a.Present(live.ViewCamera.transform.position);rebounded|=a.TouchCompression<-.0001f;a.Instance.Runtime.Process();a.FreezePresentation=true;yield return null;}
                 Check(a.TouchSound.PressureReleases==1,"松压只播一次原始弹性尾音 "+folder);
+                Check(a.Physics.ScaleRebuildCount==rebuilds,"轻抚持续按压及回弹不重建骨链 "+folder);
+                a.ResizeUniform(height+.01f);a.Physics.Prepare();a.Physics.Prepare();
+                Check(a.Physics.ScaleRebuildCount==rebuilds+1,"身高编辑重建一次 "+folder);
+                a.ResizeUniform(height);a.Physics.Prepare();
                 Check(rebounded,"释放有反向回弹 "+folder);Check(Mathf.Abs(a.TouchCompression)<.001f,"释放弹性收稳 "+folder);
                 Check(a.TouchSession.CompletedCount==2,"两次接触分别提交 "+folder);
                 Check(Vector3.Distance(scale,a.Instance.transform.localScale)<.001f&&Vector3.Distance(pos,a.Instance.transform.localPosition)<.001f,"释放恢复外观尺度和位置 "+folder);

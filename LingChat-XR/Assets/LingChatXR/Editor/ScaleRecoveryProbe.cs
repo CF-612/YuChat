@@ -60,7 +60,7 @@ namespace LingChatXR.Editor
                     Vector3[] reference=null;
                     foreach(float factor in new[]{1f,.5f,2f})
                     {
-                        root.transform.SetPositionAndRotation(new Vector3(.3f,.74f,-.2f),Quaternion.Euler(0,25,0));a.Instance.transform.localScale=modelScale*factor;
+                        root.transform.SetPositionAndRotation(new Vector3(.3f,.74f,-.2f),Quaternion.Euler(0,25,0));a.Instance.transform.localScale=modelScale*factor;adapter.CaptureStructuralScale();
                         a.Instance.Runtime.SpringBone.ReconstructSpringBone();adapter.RequestReset();adapter.Prepare();
                         a.Instance.Runtime.SpringBone.RestoreInitialTransform();float before=ResetError();adapter.RequestReset();adapter.Prepare();float after=ResetError();
                         if(after>1e-5f)throw new Exception("Center-space reset failed");

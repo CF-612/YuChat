@@ -97,6 +97,7 @@ namespace LingChatXR
             Instance.transform.localScale*=ratio;Instance.transform.localPosition*=ratio;
             MeasuredHeightMeters*=ratio;FootprintRadius=FootprintAtHeight(height);HeightMeters=height;
             GrabProxy.center=Vector3.up*height*.45f;GrabProxy.height=height*.65f;GrabProxy.radius=height*.15f;
+            Physics?.CaptureStructuralScale();
             Physics?.RequestReset();
         }
         private Transform[] originalCenters;

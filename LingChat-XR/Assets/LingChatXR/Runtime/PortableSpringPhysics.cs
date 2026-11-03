@@ -16,6 +16,13 @@ namespace LingChatXR
         FastSpringBoneCombinedBuffer configured;
         bool resetPending=true, paused;
         float lastScale=-1;
+        float structuralScale;
+        public int ScaleRebuildCount { get; private set; }
+        public void CaptureStructuralScale()
+        {
+            var scale=instance.transform.lossyScale;
+            structuralScale=Mathf.Max(Mathf.Abs(scale.x),Mathf.Abs(scale.y),Mathf.Abs(scale.z));
+        }
         bool configuredAir;
         // 相对静止空气的运动输入；力的积分、碰撞和约束仍全部由 UniVRM 执行。
         // 数值是 UniVRM 的外力单位，不是牛顿。所有模型共用，不识别角色/骨名。
@@ -39,6 +46,7 @@ namespace LingChatXR
         public void Initialize(Vrm10Instance value)
         {
             instance=value;
+            CaptureStructuralScale();
             foreach(var spring in value.SpringBone.Springs)
                 foreach(var joint in spring.Joints)source[joint.transform]=joint.Blittable;
         }
@@ -57,12 +65,12 @@ namespace LingChatXR
         {
             if(instance==null)return;
             var combiner=FastSpringBoneService.Instance.BufferCombiner;
-            float scale=Mathf.Max(Mathf.Abs(instance.transform.lossyScale.x),Mathf.Abs(instance.transform.lossyScale.y),Mathf.Abs(instance.transform.lossyScale.z));
+            float scale=structuralScale;
             if(!float.IsFinite(scale)||scale<=0)throw new System.InvalidOperationException("物理要求有效正尺度。");
             // 原生逻辑段长在构造时固定；运行缩放变化必须重建长度，不能只更新半径。
             if(lastScale>0&&!Mathf.Approximately(lastScale,scale))
             {
-                instance.Runtime.SpringBone.ReconstructSpringBone();resetPending=true;
+                instance.Runtime.SpringBone.ReconstructSpringBone();ScaleRebuildCount++;resetPending=true;
             }
             // 注册/卸载只排队；先完成合并，避免把参数写入即将废弃的旧 buffer。
             combiner.ReconstructIfDirty(default).Complete();
