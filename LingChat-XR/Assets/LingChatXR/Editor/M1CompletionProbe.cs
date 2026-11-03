@@ -132,7 +132,7 @@ namespace LingChatXR.Editor
                 var window=ScriptableObject.CreateInstance<DirectorPlaytestWindow>();
                 var results=new JArray();
                 try{
-                    foreach(string text in new[]{"我要走啦，下次见。","陪我安静待一会儿，先别动。","请蹲下，双手假装捡起一个大箱子，再慢慢站起来。"}){
+                    foreach(string text in Environment.GetEnvironmentVariable("XR_DIRECTOR_ACROBATICS")=="1"?new[]{"你会翻跟头吗？","翻个跟头","跳一下"}:new[]{"我要走啦，下次见。","陪我安静待一会儿，先别动。","请蹲下，双手假装捡起一个大箱子，再慢慢站起来。"}){
                         window.ProbeInput=text;var job=window.Run(live,0);while(!job.IsCompleted)yield return null;job.GetAwaiter().GetResult();
                         results.Add(new JObject{["input"]=text,["selected"]=window.Selected,["executed"]=window.Executed,["cache"]=window.CachedPackage});
                         File.WriteAllText(Path.Combine(Evidence,"director-live.json"),results.ToString());

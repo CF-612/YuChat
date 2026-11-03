@@ -1,5 +1,6 @@
 """Capture one uncached my-neuro T2M generation on the local PC."""
 import argparse
+import base64
 import json
 import math
 import time
@@ -28,7 +29,8 @@ def main():
     parser.add_argument("--port", type=int, default=17880)
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=False)
-    body = {"text": args.prompt, "seed": args.seed}
+    prompt = base64.b64decode(args.prompt[4:],validate=True).decode("utf-8") if args.prompt.startswith("b64:") else args.prompt
+    body = {"text": prompt, "seed": args.seed}
     report = dict(body, model="morelle/T2M-DLC2", modelRevision="fc4221d11a9c31598b15feece5ab015e41d4f373")
     request = Request(f"http://127.0.0.1:{args.port}/api/generate", json.dumps(body).encode(),
                       {"Content-Type": "application/json"})

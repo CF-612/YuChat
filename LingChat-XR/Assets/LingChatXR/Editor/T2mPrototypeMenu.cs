@@ -38,7 +38,7 @@ namespace LingChatXR.Editor
             string tools=Path.Combine(root,"tools/video-motion");
             string port=Environment.GetEnvironmentVariable("XR_T2M_PORT")??"17880";
             if(!int.TryParse(port,out int n)||n<1||n>65535)throw new InvalidDataException("XR_T2M_PORT 无效");
-            await Run(python,root,Quote(Path.Combine(tools,"capture_t2m.py"))+" "+Quote(prompt)+" "+Quote(output)+" --port "+n+" --seed "+seed);
+            await Run(python,root,Quote(Path.Combine(tools,"capture_t2m.py"))+" "+Quote("b64:"+Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(prompt)))+" "+Quote(output)+" --port "+n+" --seed "+seed);
             string package=Path.Combine(output,"package");
             await Run(python,root,Quote(Path.Combine(tools,"convert_t2m.py"))+" "+Quote(Path.Combine(output,"motion.json"))+" "+Quote(package));
             return package;

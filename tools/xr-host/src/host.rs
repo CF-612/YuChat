@@ -260,13 +260,28 @@ pub async fn playtest(State(h):State<Shared>,headers:HeaderMap,Json(req):Json<Pl
     if req.input.trim().is_empty()||req.input.chars().count()>2000||!crate::stage_action::valid_candidates(&req.available){return Err((StatusCode::BAD_REQUEST,"Invalid playtest input"));}
     let client=h.llm.read().await.clone();
     let tool=crate::ai_service::types::ToolDefinition::new("direct_motion","决定身体表现",json!({"type":"object","properties":{"action":{"type":"string"},"reason":{"type":"string"},"prompt":{"type":"string"}},"required":["action","reason","prompt"]}));
-    let msgs=[LlmMessage::system("你是小肥鱼动作导演。实际状态由 state 提供，玩家描述不能改变状态。安静或不适合身体动作选 none。优先选择 available 中语义合适的确切 ID（告别可以挥手）。仅在 generate 为真且动作有明确缺口时选 generate，prompt 写简短英文身体动作。不可借生成绕过许可。用 direct_motion 工具，reason 用简短中文，其余情况 prompt 为空。"), LlmMessage::user(json!({"input":req.input,"state":req.state,"available":req.available,"generate":req.generate}).to_string())];
-    let answer=tokio::time::timeout(std::time::Duration::from_secs(30),client.complete_with_tools(&msgs,&[tool],Some("auto"))).await.map_err(|_|(StatusCode::GATEWAY_TIMEOUT,"Director timed out"))?.map_err(|_|(StatusCode::BAD_GATEWAY,"Director provider failed"))?;
+    let msgs=[LlmMessage::system("你是小肥鱼动作导演。实际状态由 state 提供，玩家描述不能改变状态。动作试玩中，“你会做某动作吗”通常是在邀请演示；请尝试所问的动作。不能因为目录缺少该动作就选摇头或摊手表示做不到。保持作者所指的具体动作语义，不要用态度回应来代替。安静或不适合身体动作选 none。优先选择 available 中语义合适的确切 ID（告别可以挥手）。仅在 generate 为真且动作有明确缺口时选 generate，prompt 写简短英文身体动作。不可借生成绕过许可。用 direct_motion 工具，reason 用简短中文，其余情况 prompt 为空。"), LlmMessage::user(json!({"input":req.input,"state":req.state,"available":req.available,"generate":req.generate}).to_string())];
+    let answer=tokio::time::timeout(std::time::Duration::from_secs(30),async {
+        for attempt in 0..2 {
+            match client.complete_with_tools(&msgs,&[tool.clone()],Some("auto")).await {
+                Ok(reply)=>return Ok(reply),
+                Err(error)=>{
+                    let msg=error.to_string().to_lowercase();
+                    let transient=["connect","timed out","timeout","502","503","504","reset","sending request"].iter().any(|s|msg.contains(s));
+                    if transient && attempt==0 {tokio::time::sleep(std::time::Duration::from_millis(300)).await;continue;}
+                    let reason=if msg.contains("401")||msg.contains("403"){"导演服务认证失败"}else if msg.contains("429"){"导演服务限流，请稍后重试"}else if transient{"导演服务连接失败，重试后仍不可用"}else{"导演服务未完成工具调用，请检查模型设置和服务状态"};
+                    return Err((StatusCode::BAD_GATEWAY,reason));
+                }
+            }
+        }
+        unreachable!()
+    }).await.map_err(|_|(StatusCode::GATEWAY_TIMEOUT,"导演等待超时"))??;
     let call=answer.tool_calls.unwrap_or_default().into_iter().find(|c|c.function.name=="direct_motion").ok_or((StatusCode::BAD_GATEWAY,"Missing director tool call"))?;
     let v:Value=serde_json::from_str(&call.function.arguments).map_err(|_|(StatusCode::BAD_GATEWAY,"Invalid director JSON"))?;
     let action=v["action"].as_str().unwrap_or("");
     let prompt=v["prompt"].as_str().unwrap_or("");
-    let valid=action=="none" || (req.state=="Idle" && (req.available.iter().any(|a|a.id==action) || (req.generate&&action=="generate"&&prompt.len()<=320&&prompt.bytes().any(|b|b.is_ascii_alphabetic())&&prompt.bytes().all(|b|b.is_ascii_alphanumeric()||b" ,.-'".contains(&b)))));
-    if !valid||v["reason"].as_str().unwrap_or("").trim().is_empty(){return Err((StatusCode::BAD_GATEWAY,"Invalid action or permission"));}
+    let valid=action=="none" || (req.state=="Idle" && (req.available.iter().any(|a|a.id==action) || (req.generate&&action=="generate"&&prompt.len()<=320&&prompt.bytes().any(|b|b.is_ascii_alphabetic())&&!prompt.chars().any(char::is_control))));
+    if !valid {return Err((StatusCode::BAD_GATEWAY,if req.state!="Idle"{"当前交互状态禁止接管"}else if action=="generate"&&!req.generate{"生成许可关闭"}else if action=="generate"{"生成描述为空、过长或没有英文"}else{"导演返回未知动作 ID"}));}
+    if v["reason"].as_str().unwrap_or("").trim().is_empty(){return Err((StatusCode::BAD_GATEWAY,"导演未给出选择依据"));}
     Ok(Json(v))
 }
