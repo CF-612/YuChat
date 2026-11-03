@@ -1,5 +1,6 @@
 """Convert a validated T2M joint track into a root-locked humanoid VRMA."""
 import argparse
+import hashlib
 import json
 from pathlib import Path
 
@@ -63,6 +64,7 @@ def convert(data, path):
         poses.append(pose)
     rotations = [continuous_quaternions(track) for track in np.swapaxes(poses,0,1)]
     hips = np.tile(rest[0],(len(frames),1))
+    hips[:,1] += frames[:,0,1] - frames[0,0,1]
     write_glb(path,nodes,rotations,hips,data["fps"],{"humanBones":dict.fromkeys(NAMES)})
 
 
@@ -71,4 +73,18 @@ if __name__ == "__main__":
     parser.add_argument("motion",type=Path)
     parser.add_argument("output",type=Path)
     args=parser.parse_args()
-    convert(json.loads(args.motion.read_text(encoding="utf-8")),args.output)
+    data = json.loads(args.motion.read_text(encoding="utf-8"))
+    if args.output.suffix.lower() == ".vrma":
+        convert(data, args.output)
+    else:
+        validate(data)
+        args.output.mkdir(parents=True, exist_ok=False)
+        body = args.output / "body.vrma"
+        convert(data, body)
+        count = len(data["joints"])
+        metadata = dict(schemaVersion="lingchat.motion.v1", bodyFile=body.name,
+                        bodySha256=hashlib.sha256(body.read_bytes()).hexdigest(),
+                        appendageMode="none", worldRootPolicy="external", quaternionOrder="xyzw",
+                        posePolicy="absolute", frameCount=count, sampleRateHz=data["fps"],
+                        lastSampleTimeSec=(count-1)/data["fps"])
+        (args.output / "metadata.json").write_text(json.dumps(metadata,indent=2),encoding="utf-8")
