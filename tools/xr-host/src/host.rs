@@ -88,9 +88,12 @@ pub async fn turn(State(h):State<Shared>,headers:HeaderMap,Json(req):Json<Turn>)
     });
     Ok(Json(answer))
 }
-pub async fn stop(State(h):State<Shared>,headers:HeaderMap,Json(req):Json<OpenSession>)->ApiResult {
+#[derive(Deserialize)] #[serde(rename_all="camelCase")]
+pub struct StopSession { pub session_id:String, pub expected_generation:Option<u64> }
+pub async fn stop(State(h):State<Shared>,headers:HeaderMap,Json(req):Json<StopSession>)->ApiResult {
     auth(&h,&headers)?; let mut all=h.sessions.lock().await;
     let s=all.get_mut(&req.session_id).ok_or((StatusCode::NOT_FOUND,"Session missing"))?;
+    if req.expected_generation.is_some_and(|g|g>0 && g!=s.generation){return Ok(Json(json!({"generation":s.generation})));}
     if let Some(cancel)=s.cancel.take(){let _=cancel.send(());}
     s.generation+=1;s.busy=false;Ok(Json(json!({"generation":s.generation})))
 }
@@ -99,7 +102,13 @@ pub struct OpenSession {pub session_id:String, #[serde(default)] pub after:usize
 pub async fn events(State(h):State<Shared>,headers:HeaderMap,Query(req):Query<OpenSession>)->ApiResult {
     auth(&h,&headers)?;let all=h.sessions.lock().await;
     let s=all.get(&req.session_id).ok_or((StatusCode::NOT_FOUND,"Session missing"))?;
-    Ok(Json(json!({"events":s.events.iter().filter(|e|e.cursor>req.after).collect::<Vec<_>>()})))
+    let newest=s.events.last().map_or(0,|e|e.cursor);
+    let oldest=s.events.first().map_or(0,|e|e.cursor);
+    let gap=req.after>newest || req.after.saturating_add(1)<oldest;
+    if gap {
+        return Ok(Json(json!({"cursorExpired":true,"oldestCursor":oldest,"cursor":newest,"history":s.history,"events":[]})));
+    }
+    Ok(Json(json!({"oldestCursor":oldest,"cursor":newest,"events":s.events.iter().filter(|e|e.cursor>req.after).collect::<Vec<_>>()})))
 }
 pub async fn audio(State(h):State<Shared>,headers:HeaderMap,Path(id):Path<String>)->Response {
     if let Err(e)=auth(&h,&headers){return e.into_response();}

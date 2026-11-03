@@ -187,7 +187,7 @@ async fn stopping_blocked_turn_releases_voice_lane_for_next_turn() {
             while voice.calls.load(Ordering::SeqCst)<expected {tokio::task::yield_now().await;}
         }).await.unwrap();
         if expected<3 {
-            let _=stop(State(h.clone()),headers.clone(),Json(OpenSession{session_id:"feiyu".into(),after:0})).await.unwrap();
+            let _=stop(State(h.clone()),headers.clone(),Json(StopSession{session_id:"feiyu".into(),expected_generation:None})).await.unwrap();
         } else {gate.notify_one();}
     }
     tokio::time::timeout(std::time::Duration::from_secs(3),async {
@@ -195,4 +195,19 @@ async fn stopping_blocked_turn_releases_voice_lane_for_next_turn() {
     }).await.unwrap();
     let all=h.sessions.lock().await;
     assert_eq!(all["feiyu"].events.iter().filter(|e|e.kind=="audio").count(),1);
+}
+
+#[tokio::test]
+async fn expired_cursor_returns_history_instead_of_incomplete_event_stream() {
+    let voice=Arc::new(VoiceFixture{calls:AtomicUsize::new(0),fail_first:false,gate:None});
+    let h=fixture(vec![],voice).await;
+    for _ in 0..1026 {h.event("feiyu",1,"turn",0,"text","正文","").await;}
+    let mut headers=HeaderMap::new();
+    headers.insert("authorization","Bearer fixture-only".parse().unwrap());
+    for (after,gap) in [(0,true),(1,true),(2,false),(1026,false),(1027,true)] {
+        let Json(reply)=events(State(h.clone()),headers.clone(),Query(OpenSession{session_id:"feiyu".into(),after})).await.unwrap();
+        assert_eq!(reply["cursorExpired"].as_bool().unwrap_or(false),gap);
+        assert_eq!(reply["oldestCursor"],3);
+        if gap {assert!(reply["history"].is_array());assert_eq!(reply["events"].as_array().unwrap().len(),0);}
+    }
 }

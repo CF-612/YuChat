@@ -20,10 +20,10 @@ namespace LingChatXR.Chat
     [Serializable] public sealed class StageDecision { public string action; public string reason; }
     [Serializable] public sealed class StageCandidate { public string id; public string label; public bool persistent; }
     [Serializable] public sealed class ChatEvent { public int cursor; public string sessionId; public string roleId; public string turnId; public long generation; public int index; public string kind; public string message; public string audioFile; public string emotion; public string motion; public StageDecision stageAction; public string stageRequestId; }
-    [Serializable] public sealed class EventReply { public ChatEvent[] events; }
+    [Serializable] public sealed class EventReply { public ChatEvent[] events; public bool cursorExpired; public int cursor; public ChatRow[] history; }
     [Serializable] internal sealed class OpenRequest { public string roleId; }
     [Serializable] internal sealed class TurnRequest { public string sessionId; public string text; public bool testVoice; public string retryTurn; public int retryIndex; public bool director; public StageCandidate[] available; public string style; public string previousPose; }
-    [Serializable] internal sealed class StopRequest { public string sessionId; }
+    [Serializable] internal sealed class StopRequest { public string sessionId; public long expectedGeneration; }
 
     [RequireComponent(typeof(XrSpeechController))]
     public sealed partial class XrChatController : MonoBehaviour
@@ -323,7 +323,16 @@ namespace LingChatXR.Chat
                     if (request.result == UnityWebRequest.Result.Success)
                     {
                         var reply = JsonUtility.FromJson<EventReply>(request.downloadHandler.text);
-                        if (reply.events != null) foreach (var item in reply.events) Accept(item);
+                        if(reply.cursorExpired)
+                        {
+                            StopGeneration(queue.Generation);
+                            cursor=reply.cursor;
+                            history.Clear();
+                            if(reply.history!=null)history.AddRange(reply.history);
+                            Status="连接中断过久，本轮播放已结束，已恢复对话记录";
+                            Notify();
+                        }
+                        else if (reply.events != null) foreach (var item in reply.events) Accept(item);
                     }
                     else { Status = "连接中断，请停止后重新连接"; Notify(); }
                 }
@@ -441,20 +450,21 @@ namespace LingChatXR.Chat
             if(stage==null||stage.Avatar!=motionAvatar||Time.unscaledTime-decision.arrived>10)return;
             _=motionAvatar.Motions.Decide(queue.Turn,decision.item.stageRequestId,decision.item.stageAction.action);
         }
-        public void Stop()
+        public void Stop()=>StopGeneration(0);
+        private void StopGeneration(long expectedGeneration)
         {
             CancelRecognition();
             if (Stopping) return;
             ++epoch; queue.Cancel(); currentCue=null; writer.Cancel();motionWriter.Cancel(); Voice.Stop(); Effects.Stop(); Thinking=false; Busy = false; Status = "已停止";
             motionAvatar?.Motions.EndTurn();stageDecisions.Clear();motionAvatar=null;
             var spatial=FindAnyObjectByType<FeiyuPreview>();if(spatial!=null&&spatial.Ready)spatial.Avatar.Motions?.CancelSpeech();Notify();
-            if (Connected && session != null && isActiveAndEnabled) { Stopping = true; Notify(); StartCoroutine(StopRemote(session)); }
+            if (Connected && session != null && isActiveAndEnabled) { Stopping = true; Notify(); StartCoroutine(StopRemote(session,expectedGeneration)); }
         }
-        private IEnumerator StopRemote(string id)
+        private IEnumerator StopRemote(string id,long expectedGeneration)
         {
             // 等待在途 /turn 返回后再取消，避免旧停止请求误取消下一轮。
             while (pendingTurn) yield return null;
-            using (var scope = Request("/stop", JsonUtility.ToJson(new StopRequest { sessionId = id })))
+            using (var scope = Request("/stop", JsonUtility.ToJson(new StopRequest { sessionId = id, expectedGeneration = expectedGeneration })))
             {
                 var request=scope.Value;
                 yield return request.SendWebRequest();
