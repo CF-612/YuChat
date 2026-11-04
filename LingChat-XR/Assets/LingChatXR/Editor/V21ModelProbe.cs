@@ -92,6 +92,12 @@ namespace LingChatXR.Editor
             cam.backgroundColor=new Color(.1f,.14f,.19f);cam.clearFlags=CameraClearFlags.SolidColor;
             cam.transform.position=new Vector3(0,.14f,.65f);cam.transform.LookAt(new Vector3(0,.13f,0));
             new GameObject("Light").AddComponent<Light>().type=LightType.Directional;RenderSettings.ambientLight=Color.white;
+            if(Environment.GetEnvironmentVariable("XR_V21_MATERIAL_AB")=="1")
+            {
+                var check=V21MaterialAbProbe.Check(avatar,cam,output);
+                while(check.MoveNext())yield return null;
+                yield break;
+            }
             if(Environment.GetEnvironmentVariable("XR_V21_DRAW_AUDIT")=="1")
             {
                 if(Environment.GetEnvironmentVariable("XR_V21_LILTOON")=="1")AnimePresentation.Apply(avatar);
@@ -121,7 +127,7 @@ namespace LingChatXR.Editor
             }
             File.WriteAllText(Path.Combine(output,"result.json"),new JObject{["passed"]=true,["loadSeconds"]=seconds,["expressionCount"]=expression.ExpressionKeys.Count(),["staticStates"]=5,["dynamicExpressionsIntegrated"]=false,["visualAccepted"]=false}.ToString());
         }
-        static void Capture(Camera cam,string path)
+        internal static void Capture(Camera cam,string path)
         {
             var rt=new RenderTexture(640,720,24);rt.Create();var old=RenderTexture.active;
             cam.targetTexture=rt;cam.Render();RenderTexture.active=rt;
