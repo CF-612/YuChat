@@ -33,6 +33,7 @@ namespace LingChatXR
         public int SizeEditGeneration { get; private set; }
         private float sizeBeforeEdit;
         private string[] packageFolders=Array.Empty<string>(),packageLabels=Array.Empty<string>();
+        private string startupOverride;
         private int selectedPackage;
         public LoadPhase LoadingPhase { get; private set; }
         public bool Loading => LoadingPhase==LoadPhase.Queued || LoadingPhase==LoadPhase.ReadingPackage || LoadingPhase==LoadPhase.Importing;
@@ -135,6 +136,8 @@ namespace LingChatXR
             {
                 try{string saved=(string)PreferenceFiles.Read(ApplicationPreferencesPath)["modelFolder"];if(Array.IndexOf(packageFolders,saved)>=0)characterFolder=saved;}
                 catch(Exception e)when(PreferenceFiles.IsStorageError(e)){Debug.LogWarning("XR_APP_PREFERENCES_UNREADABLE: 原文件保留，使用默认模型。");}
+                // 临时占位是发布目录策略，不重写用户原来的模型选择和各模型设置。
+                if(!string.IsNullOrEmpty(startupOverride))characterFolder=startupOverride;
             }
             await SwitchCharacterAsync(characterFolder);
         }
@@ -602,6 +605,7 @@ namespace LingChatXR
         private async Task RefreshPackages()
         {
             var catalog=await CharacterCatalog.Load(Application.streamingAssetsPath+"/Characters",lifetime.Token);
+            startupOverride=catalog.startupOverride;
             packageFolders=catalog.folders;packageLabels=catalog.labels;selectedPackage=Mathf.Max(0,Array.IndexOf(packageFolders,characterFolder));
         }
     }

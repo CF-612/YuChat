@@ -1,5 +1,6 @@
 {
     "version": 1,
+    "startupOverride": "local-physics-reference",
     "folders": [
         "local-physics-reference",
         "local-smallbluefish-alpha2"
