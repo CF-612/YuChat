@@ -17,11 +17,12 @@ pub struct Event { pub cursor:usize, pub session_id:String, pub role_id:String, 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all="camelCase")]
 pub struct Session { pub id:String, pub role_id:String, pub generation:u64, pub history:Vec<History>, pub sentences:Vec<Sentence>, #[serde(skip)] pub events:Vec<Event>, #[serde(skip)] pub busy:bool, #[serde(skip)] cancel:Option<tokio::sync::oneshot::Sender<()>> }
+impl Session { pub fn empty(id:String,role_id:String)->Self {Self{id,role_id,generation:0,history:vec![],sentences:vec![],events:vec![],busy:false,cancel:None}} }
 pub struct VoiceQueue { slots:Arc<tokio::sync::Semaphore>, engine:Mutex<()> }
 impl Default for VoiceQueue {
     fn default()->Self {Self{slots:Arc::new(tokio::sync::Semaphore::new(8)),engine:Mutex::new(())}}
 }
-pub struct Host { pub store_writer:Mutex<()>, pub voice_queue:VoiceQueue, pub token:String, pub root:PathBuf, pub llm:RwLock<Arc<LlmClient>>, pub settings_path:Option<PathBuf>, pub translator:Translator, pub voice:Arc<dyn TtsAdapter>, pub sessions:Mutex<HashMap<String,Session>> }
+pub struct Host { pub store:crate::session_store::SessionStore, pub voice_queue:VoiceQueue, pub token:String, pub root:PathBuf, pub llm:RwLock<Arc<LlmClient>>, pub settings_path:Option<PathBuf>, pub translator:Translator, pub voice:Arc<dyn TtsAdapter>, pub sessions:Mutex<HashMap<String,Session>> }
 pub type Shared = Arc<Host>;
 type ApiResult = Result<Json<Value>,(StatusCode,&'static str)>;
 pub fn auth(h:&Host,headers:&HeaderMap)->Result<(),(StatusCode,&'static str)> {
@@ -40,25 +41,10 @@ impl Host {
             if s.events.len()>1024 {s.events.remove(0);}
         }
     }
-    async fn persist(&self) -> anyhow::Result<()> {
-        // 先取得写入顺序再取快照，避免慢写入覆盖较新的会话。
-        let _writer=self.store_writer.lock().await;
-        let snapshot:HashMap<_,_>={
-            let sessions=self.sessions.lock().await;
-            sessions.iter().map(|(key,s)|(key.clone(),Session {
-                id:s.id.clone(),role_id:s.role_id.clone(),generation:s.generation,
-                history:s.history.clone(),sentences:s.sentences.clone(),
-                events:Vec::new(),busy:false,cancel:None,
-            })).collect()
-        };
-        let data=tokio::task::spawn_blocking(move ||serde_json::to_vec(&snapshot)).await??;
-        let path=self.root.join("sessions.json");let temp=self.root.join("sessions.tmp");
-        tokio::fs::write(&temp,data).await?;tokio::fs::rename(temp,path).await?; Ok(())
-    }
     async fn finish(&self,id:&str,g:u64,turn:&str) {
         self.event(id,g,turn,0,"streamEnd","","").await;
         if let Some(s)=self.sessions.lock().await.get_mut(id).filter(|s|s.generation==g){s.busy=false;}
-        if self.persist().await.is_err(){self.event(id,g,turn,0,"error","历史记录保存失败","").await;}
+        if self.store.save(id,&self.sessions).await.is_err(){self.event(id,g,turn,0,"error","历史记录保存失败","").await;}
     }
 }
 #[derive(Deserialize)] #[serde(rename_all="camelCase")]

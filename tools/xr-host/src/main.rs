@@ -2,6 +2,7 @@
 mod ai_service;
 mod utils;
 mod host;
+mod session_store;
 mod settings;
 mod stage_action;
 mod gateway;
@@ -46,12 +47,12 @@ async fn main()->anyhow::Result<()> {
         std::fs::write(root.join("translation-verification.json"),serde_json::to_vec_pretty(&report)?)?;
         println!("XR_REAL_TRANSLATION_AND_TTS_PASSED");return Ok(());
     }
-    let mut sessions:std::collections::HashMap<String,host::Session>=if root.join("sessions.json").exists(){serde_json::from_slice(&std::fs::read(root.join("sessions.json"))?)?}else{Default::default()};
+    let (store,mut sessions)=session_store::SessionStore::open(&root)?;
     for s in sessions.values_mut(){s.generation+=1;s.busy=false;}
     let token=uuid::Uuid::new_v4().to_string();
     let asr_settings=std::env::var("XR_ASR_SETTINGS").map(PathBuf::from).unwrap_or_else(|_|settings.clone());
     let asr_routes=asr::router(token.clone(), &asr_settings);
-    let h=Arc::new(host::Host{store_writer:Mutex::new(()),voice_queue:Default::default(),token:token.clone(),root:root.clone(),llm,translator,voice,settings_path:Some(settings),sessions:Mutex::new(sessions)});
+    let h=Arc::new(host::Host{store,voice_queue:Default::default(),token:token.clone(),root:root.clone(),llm,translator,voice,settings_path:Some(settings),sessions:Mutex::new(sessions)});
     let port:u16=std::env::var("XR_HOST_PORT").unwrap_or_else(|_|"17861".into()).parse()?;
     let listener=tokio::net::TcpListener::bind(("127.0.0.1",port)).await?;
     std::fs::write(root.parent().unwrap().join("xr-host-connection.json"),serde_json::to_vec(&json!({"endpoint":format!("http://127.0.0.1:{port}"),"token":token}))?)?;
