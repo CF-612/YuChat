@@ -109,7 +109,7 @@ struct StreamingFixture { gate:Arc<Notify> }
         tokio::task::yield_now().await;
     }}).await.expect("first audio blocked until full LLM response");
     assert!(!task.is_finished());
-    {let all=h.sessions.lock().await;let event=all["feiyu"].events.iter().find(|e|e.kind=="audio").unwrap();assert_eq!(event.message,"你好");assert_eq!(event.emotion,"开心");assert_eq!(event.motion,"挥手");}
+    {let all=h.sessions.lock().await;for kind in ["text","audio"]{let event=all["feiyu"].events.iter().find(|e|e.kind==kind).unwrap();assert_eq!(event.message,"你好");assert_eq!(event.emotion,"开心");assert_eq!(event.motion,"挥手");}}
     gate.notify_one();task.await.unwrap();
     let all=h.sessions.lock().await;let audio:Vec<_>=all["feiyu"].events.iter().filter(|e|e.kind=="audio").collect();assert_eq!(audio.len(),2);assert_eq!(audio[1].index,1);
     assert_eq!(voice.calls.load(Ordering::SeqCst),2);

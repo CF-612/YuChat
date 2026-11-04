@@ -50,7 +50,10 @@ impl Host {
             if let Some(snapshot)=s.recovery.as_mut().filter(|x|x.generation==g&&x.turn_id==turn){snapshot.event(index,kind,message,audio);}
             let cursor=s.events.last().map_or(1,|e|e.cursor+1);
             let sentence=s.sentences.iter().rev().find(|x|x.turn_id==turn&&x.index==index);
-            let emotion=sentence.map(|x|x.emotion.clone()).unwrap_or_default();let motion=sentence.map(|x|x.motion.clone()).unwrap_or_default();
+            // text 发布时持久化句段尚未完成；从已登记的当前轮取表现，不能等合成结束才有情绪。
+            let pending=s.recovery.as_ref().filter(|x|x.generation==g&&x.turn_id==turn).and_then(|x|x.sentences.iter().find(|x|x.index==index));
+            let emotion=pending.map(|x|x.emotion.clone()).or_else(||sentence.map(|x|x.emotion.clone())).unwrap_or_default();
+            let motion=pending.map(|x|x.motion.clone()).or_else(||sentence.map(|x|x.motion.clone())).unwrap_or_default();
             let sentence_end_exclusive=if kind=="streamEnd" {s.sentences.iter().rev().take_while(|x|x.turn_id==turn).map(|x|x.index+1).max().unwrap_or(0)}else{0};
             s.events.push(Event{cursor,sentence_end_exclusive,session_id:id.into(),role_id:s.role_id.clone(),turn_id:turn.into(),generation:g,index,kind:kind.into(),message:message.into(),audio_file:audio.into(),emotion,motion,stage_action:None,stage_request_id:String::new()});
             if s.events.len()>1024 {s.events.remove(0);}
