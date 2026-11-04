@@ -232,7 +232,7 @@ namespace LingChatXR
             if (!UsesAuthorPhysics)
             {
                 Physics = gameObject.AddComponent<PortableSpringPhysics>();
-                Physics.Initialize(Instance);
+                Physics.Initialize(Instance,Package.springPhysics);
             }
             ResetSecondaryMotion();
         }

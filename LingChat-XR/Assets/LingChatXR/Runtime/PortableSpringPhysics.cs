@@ -13,6 +13,8 @@ namespace LingChatXR
     {
         Vrm10Instance instance;
         readonly Dictionary<Transform,BlittableJointMutable> source=new Dictionary<Transform,BlittableJointMutable>();
+        readonly Dictionary<Transform,BlittableJointMutable> materials=new Dictionary<Transform,BlittableJointMutable>();
+        public int ConfiguredJointCount => materials.Count;
         FastSpringBoneCombinedBuffer configured;
         bool resetPending=true, paused;
         float lastScale=-1;
@@ -43,12 +45,37 @@ namespace LingChatXR
             if(!MotionAirEnabled||paused||!float.IsFinite(velocity.sqrMagnitude)){MotionAirForce=Vector3.zero;return;}
             MotionAirForce=-velocity.normalized*Mathf.Min(.8f,.08f*velocity.sqrMagnitude);
         }
-        public void Initialize(Vrm10Instance value)
+        public void Initialize(Vrm10Instance value,SpringPhysicsConfiguration configuration=null)
         {
             instance=value;
             CaptureStructuralScale();
             foreach(var spring in value.SpringBone.Springs)
                 foreach(var joint in spring.Joints)source[joint.transform]=joint.Blittable;
+            ConfigureMaterials(configuration);
+        }
+        // 映射完全来自角色包；运行时不根据角色身份、骨名关键词猜部件类型。
+        public void ConfigureMaterials(SpringPhysicsConfiguration configuration)
+        {
+            materials.Clear();configured=null;
+            if(configuration?.bindings==null||configuration.materials==null)return;
+            foreach(var binding in configuration.bindings)
+            {
+                if(binding==null||binding.spring<0||binding.spring>=instance.SpringBone.Springs.Count)continue;
+                var chain=instance.SpringBone.Springs[binding.spring];
+                var material=System.Array.Find(configuration.materials,m=>m!=null&&m.id==binding.material&&m.Valid);
+                if(material==null||chain.Joints.Count==0||chain.Joints[0].transform.name!=binding.root)
+                {Debug.LogWarning("物理材质绑定无效，保留作者配置："+binding.root);continue;}
+                for(int i=0;i<chain.Joints.Count;i++)
+                {
+                    var joint=chain.Joints[i].transform;var b=source[joint];
+                    float t=chain.Joints.Count<=1?0:(float)i/(chain.Joints.Count-1);
+                    bool authored=b.anglelimitType!=AnglelimitTypes.None;
+                    materials[joint]=new BlittableJointMutable(Mathf.Lerp(material.rootStiffness,material.tipStiffness,t),material.gravity,
+                        new Unity.Mathematics.float3(0,-1,0),material.drag,b.radius,
+                        authored?(float)b.anglelimitType:(float)AnglelimitTypes.Cone,
+                        authored?b.anglelimit1:Mathf.Lerp(material.rootAngle,material.tipAngle,t)*Mathf.Deg2Rad,b.anglelimit2,b.anglelimitOffset);
+                }
+            }
         }
         public void RequestReset() {resetPending=true;hasPosition=false;MotionAirForce=Vector3.zero;}
         public void SetPaused(bool value)
@@ -79,7 +106,7 @@ namespace LingChatXR
             {
                 foreach(var entry in source)
                 {
-                    var b=entry.Value;var s=entry.Key.lossyScale;
+                    var b=materials.TryGetValue(entry.Key,out var material)?material:entry.Value;var s=entry.Key.lossyScale;
                     float radiusScale=Mathf.Max(Mathf.Abs(s.x),Mathf.Abs(s.y),Mathf.Abs(s.z));
                     // 原生 Cone 约束作为通用运动模式的最大弯曲范围；已有作者角限优先。
                     // 无约束链直接受逆向风力会翻转 180°，不能只加大外力。

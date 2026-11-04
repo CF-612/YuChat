@@ -15,6 +15,31 @@ namespace LingChatXR
         public string displayName;
         public ModelReference model;
         public InteractionBindings interactionBindings;
+        public SpringPhysicsConfiguration springPhysics;
+    }
+
+    [Serializable] public sealed class SpringPhysicsConfiguration
+    {
+        public SpringPhysicsMaterial[] materials;
+        public SpringPhysicsBinding[] bindings;
+    }
+    [Serializable] public sealed class SpringPhysicsBinding
+    {
+        public int spring;
+        public string root, material;
+    }
+    [Serializable] public sealed class SpringPhysicsMaterial
+    {
+        public string id;
+        public float rootStiffness=1, tipStiffness=1, gravity=1, drag=.65f;
+        public float rootAngle=90, tipAngle=90;
+        public bool Valid => !string.IsNullOrEmpty(id) &&
+            float.IsFinite(rootStiffness)&&rootStiffness>=0&&rootStiffness<=20 &&
+            float.IsFinite(tipStiffness)&&tipStiffness>=0&&tipStiffness<=20 &&
+            float.IsFinite(gravity)&&gravity>=0&&gravity<=5 &&
+            float.IsFinite(drag)&&drag>=0&&drag<=1 &&
+            float.IsFinite(rootAngle)&&rootAngle>0&&rootAngle<=180 &&
+            float.IsFinite(tipAngle)&&tipAngle>0&&tipAngle<=180;
     }
 
     [Serializable] public sealed class InteractionBindings
