@@ -1,10 +1,11 @@
-﻿param(
+param(
     [string]$LingChatRoot = 'D:/GameCreator/Document/LingChat/.codex-worktrees/vrm-mvp',
     [string]$SettingsPath = (Join-Path $env:APPDATA 'com.noiq.ling-chat.vrm-mvp/settings.json'),
     [string]$ServiceSettingsPath = '',
     [string]$AsrSettingsPath = '',
     [switch]$Build,
-    [switch]$VerifyTranslation
+    [switch]$VerifyTranslation,
+    [switch]$ExportReactions
 )
 $ErrorActionPreference = 'Stop'
 $startupStage = 'settings'
@@ -40,6 +41,7 @@ if ($Build -or -not (Test-Path $binary)) {
     & (Join-Path $env:USERPROFILE '.cargo/bin/cargo.exe') build --locked --target-dir (Join-Path $PSScriptRoot 'target/c0') --manifest-path (Join-Path $PSScriptRoot 'Cargo.toml')
     if ($LASTEXITCODE -ne 0) { throw 'Host build failed.' }
 }
+if ($ExportReactions) { & $binary --export-reactions; if($LASTEXITCODE-ne0){throw "Reaction export failed."}; exit }
 if ($VerifyTranslation) {
     & $binary --verify-translation
     if ($LASTEXITCODE -ne 0) { throw 'Real translation validation failed.' }

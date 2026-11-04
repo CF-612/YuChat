@@ -32,6 +32,11 @@ namespace LingChatXR.Speech
         private Coroutine routine;
         private ITtsRequestFactory requestFactory = new WavHttpTtsAdapter();
         private long generation;
+        private int reactionPriority;
+        private float volume = 1, reactionGain = 1;
+        public float ReactionGain { set { reactionGain = Mathf.Clamp01(value); if(voice!=null) voice.volume=volume*reactionGain; } }
+        private readonly System.Collections.Generic.HashSet<string> reactionEvents = new System.Collections.Generic.HashSet<string>();
+        private readonly System.Collections.Generic.Queue<string> recentReactionEvents = new System.Collections.Generic.Queue<string>();
 
         public VoiceKind CurrentKind { get; private set; }
         public bool IsWaiting => activeRequest != null;
@@ -42,7 +47,7 @@ namespace LingChatXR.Speech
         public string LastStatus { get; private set; } = "Silent until an endpoint or cached reaction is explicitly supplied.";
         public long Generation => generation;
         public XrTtsSettings Settings => settings.Copy();
-        public float Volume { get => voice == null ? 1 : voice.volume; set { if (voice != null) voice.volume = Mathf.Clamp01(value); } }
+        public float Volume { get => volume; set { volume = Mathf.Clamp01(value); if (voice != null) voice.volume = volume * reactionGain; } }
         public float SampleAmplitude(float[] buffer)
         {
             if (!IsPlaying || buffer == null || buffer.Length == 0) return 0;
@@ -151,21 +156,35 @@ namespace LingChatXR.Speech
             catch { FailCurrent(token, "Audio download failed."); return false; }
         }
 
-        public bool PlayReaction(AudioClip preloadedClip)
+        public bool PlayReaction(AudioClip preloadedClip) => PlayReaction(preloadedClip, 0, null);
+
+        // 同一声音出口执行业务优先级；事件在抢占前去重，避免重复事件停止自身。
+        public bool PlayReaction(AudioClip preloadedClip, int priority, string eventId)
         {
             if (!isActiveAndEnabled || voice == null || preloadedClip == null) return false;
-            if (CurrentKind != VoiceKind.None || IsWaiting || voice.isPlaying)
-            {
-                LastStatus = "Cached reaction skipped: foreground voice is busy.";
-                PlaybackEvent?.Invoke(VoiceKind.Reaction, VoiceOutcome.Skipped, generation);
-                return false;
-            }
+            if (!string.IsNullOrEmpty(eventId) && reactionEvents.Contains(eventId)) return false;
+            bool busy = CurrentKind != VoiceKind.None || IsWaiting || voice.isPlaying;
+            int currentPriority = CurrentKind == VoiceKind.Reaction ? reactionPriority : 0;
+            if (busy && priority <= currentPriority) return false;
             if (preloadedClip.loadState != AudioDataLoadState.Loaded)
             {
                 LastStatus = "Cached reaction skipped: clip was not preloaded.";
                 PlaybackEvent?.Invoke(VoiceKind.Reaction, VoiceOutcome.Skipped, generation);
                 return false;
             }
+            if (busy)
+            {
+                long beforeStop = generation;
+                Stop();
+                if (generation != beforeStop + 1 || CurrentKind != VoiceKind.None) return false;
+            }
+            if (!string.IsNullOrEmpty(eventId))
+            {
+                reactionEvents.Add(eventId);
+                recentReactionEvents.Enqueue(eventId);
+                if (recentReactionEvents.Count > 64) reactionEvents.Remove(recentReactionEvents.Dequeue());
+            }
+            reactionPriority = priority;
             long token = ++generation;
             StartVoice(preloadedClip, VoiceKind.Reaction, token);
             if (token != generation) return false;
@@ -288,6 +307,7 @@ namespace LingChatXR.Speech
             {
                 voice.Stop();
                 voice.clip = null;
+                reactionGain=1; voice.volume=volume;
             }
             if (ownedClip != null) Destroy(ownedClip);
             ownedClip = null;

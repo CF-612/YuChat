@@ -22,13 +22,15 @@ namespace LingChatXR.Chat
     [Serializable] public sealed class ChatEvent { public int cursor; public string sessionId; public string roleId; public string turnId; public long generation; public int index; public int sentenceEndExclusive; public string kind; public string message; public string audioFile; public string emotion; public string motion; public StageDecision stageAction; public string stageRequestId; }
     [Serializable] public sealed class EventReply { public ChatEvent[] events; public bool cursorExpired; public int cursor; public int historyBefore; public ChatRow[] history; }
     [Serializable] internal sealed class OpenRequest { public string roleId; public int historyLimit=50; }
-    [Serializable] internal sealed class TurnRequest { public string sessionId; public string text; public bool testVoice; public string retryTurn; public int retryIndex; public bool director; public StageCandidate[] available; public string style; public string previousPose; }
+    [Serializable] internal sealed class TurnRequest { public string sessionId; public string text; public bool testVoice; public string voiceMode; public string retryTurn; public int retryIndex; public bool director; public StageCandidate[] available; public string style; public string previousPose; }
     [Serializable] internal sealed class StopRequest { public string sessionId; public long expectedGeneration; }
 
     [RequireComponent(typeof(XrSpeechController))]
     public sealed partial class XrChatController : MonoBehaviour
     {
         public XrSpeechController Voice { get; private set; }
+        public ShortVoiceController ShortVoice { get; private set; }
+        public CharacterVoiceMode VoiceMode { get; private set; } = CharacterVoiceMode.Clips;
         public string Status { get; private set; } = "正在连接本地语音…";
         public string Subtitle { get; private set; } = "今天想聊些什么？";
         public bool Connected { get; private set; }
@@ -108,17 +110,18 @@ namespace LingChatXR.Chat
         private string PreferencesPath => Path.Combine(Environment.GetEnvironmentVariable("XR_PREFERENCES_DIRECTORY")??Application.persistentDataPath,"xr-dialogue-preferences.json");
         private void Awake()
         {
-            Voice = GetComponent<XrSpeechController>(); Voice.PlaybackEvent += OnVoice; Effects = gameObject.AddComponent<DialogueEffects>();
+            Voice = GetComponent<XrSpeechController>(); ShortVoice=gameObject.AddComponent<ShortVoiceController>(); Voice.PlaybackEvent += OnVoice; Effects = gameObject.AddComponent<DialogueEffects>();
             var p=new DialoguePreferences();
             try{p=PreferenceFiles.Load<DialoguePreferences>(PreferencesPath);}catch(Exception e)when(PreferenceFiles.IsStorageError(e)){Status="偏好文件无法读取，原文件已保留";}
             ApplyDialogue(p);
             Role=p.role=="ling-demo"?"ling-demo":"feiyu";
         }
-        public DialoguePreferences ReadDialogue() => new DialoguePreferences{voice=Voice.Volume,effects=Effects.Volume,effectEnabled=Effects.Enabled,auto=AutoAdvance,speed=TextSpeed,role=Role};
+        public DialoguePreferences ReadDialogue() => new DialoguePreferences{voiceMode=VoiceMode.ToString().ToLowerInvariant(),voice=Voice.Volume,effects=Effects.Volume,effectEnabled=Effects.Enabled,auto=AutoAdvance,speed=TextSpeed,role=Role};
         public bool SaveDialogue(DialoguePreferences value,out string error)
         {
             error=null;
             if(value==null||!float.IsFinite(value.voice)||value.voice<0||value.voice>1||!float.IsFinite(value.effects)||value.effects<0||value.effects>1||value.speed<1||value.speed>100){error="音量需为 0–100%，出字速度需为 1–100";return false;}
+            if(value.voiceMode!="clips" && value.voiceMode!="muted" && value.voiceMode!="tts"){error="声音模式无效";return false;}
             if(value.role!="feiyu"&&value.role!="ling-demo"){error="该对话角色尚未接入";return false;}
             if(value.role!=Role&&(Busy||Stopping||connecting)){error="请等待当前对话或连接结束后切换角色";return false;}
             try
@@ -135,6 +138,9 @@ namespace LingChatXR.Chat
         }
         private void ApplyDialogue(DialoguePreferences p)
         {
+            var nextMode = p.voiceMode=="tts" ? CharacterVoiceMode.Tts : p.voiceMode=="muted" ? CharacterVoiceMode.Muted : CharacterVoiceMode.Clips;
+            if (VoiceMode != nextMode) Voice.Stop();
+            VoiceMode = nextMode; ShortVoice.SetMode(nextMode);
             Voice.Volume=float.IsFinite(p.voice)?Mathf.Clamp01(p.voice):.8f;Effects.Volume=float.IsFinite(p.effects)?Mathf.Clamp01(p.effects):.8f;
             Effects.Enabled=p.effectEnabled;AutoAdvance=p.auto;TextSpeed=p.speed;if(!p.effectEnabled)Effects.Stop();
         }
@@ -303,7 +309,7 @@ namespace LingChatXR.Chat
             Status=error??"已清除本机配对；聊天历史保留在 PC";Notify();
         }
         public void Send(string text) { if (CanSend && !string.IsNullOrWhiteSpace(text)) StartCoroutine(StartTurn(text, false, false)); }
-        public void TestVoice() { if (CanSend) StartCoroutine(StartTurn("", true, false)); }
+        public void TestVoice() { if(VoiceMode!=CharacterVoiceMode.Tts){ShortVoice.Preview("happy");return;} if (CanSend) StartCoroutine(StartTurn("", true, false)); }
         public void RetryVoice() { if (Connected && CanRetry) StartCoroutine(StartTurn("", false, true)); }
         private IEnumerator StartTurn(string text, bool test, bool retry)
         {
@@ -315,7 +321,7 @@ namespace LingChatXR.Chat
             var stage=FindAnyObjectByType<FeiyuPreview>();motionAvatar=stage!=null&&stage.Ready?stage.Avatar:null;
             var player=motionAvatar?.Motions;
             bool director=!test&&!retry&&player!=null&&player.Preferences.enabled&&player.Preferences.director;
-            using (var scope = Request("/turn", JsonUtility.ToJson(new TurnRequest { sessionId = session, text = text, testVoice = test, retryTurn = retry ? retryTurn : "", retryIndex = retryIndex,
+            using (var scope = Request("/turn", JsonUtility.ToJson(new TurnRequest { sessionId = session, text = text, testVoice = test, voiceMode=VoiceMode.ToString().ToLowerInvariant(), retryTurn = retry ? retryTurn : "", retryIndex = retryIndex,
                 director=director,style=player?.Preferences.style??"normal",previousPose=player?.PoseId??"",available=director?player.Capabilities().Select(a=>new StageCandidate{id=a.id,label=a.label,persistent=a.poseLoop!=null}).ToArray():Array.Empty<StageCandidate>() })))
             {
                 var request=scope.Value;
@@ -376,6 +382,7 @@ namespace LingChatXR.Chat
                     // 生成文本只缓存。合成/下载期间绝不提前揭示正文或播放打字效果。
                     if (!textByIndex.ContainsKey(item.index)) textByIndex[item.index] = item.message;
                     break;
+                case "silent":
                 case "audio": queue.Add(item.sessionId, item.roleId, item.turnId, item.generation, new DialogueQueue.Cue { Index = item.index, Text = item.message, Audio = item.audioFile, Emotion = item.emotion, Motion = item.motion }); break;
                 case "sentenceError":
                     retryTurn = item.turnId; retryIndex = item.index;
@@ -415,7 +422,12 @@ namespace LingChatXR.Chat
                 if (cue != null)
                 {
                     currentCue=cue; voiceEnded=false; presentationStarted=false; advanceAt=-1;
-                    if (cue.Failed) { BeginPresentation(); voiceEnded=true; }
+                    if (VoiceMode != CharacterVoiceMode.Tts || cue.Failed)
+                    {
+                        BeginPresentation(); voiceEnded=true;
+                        if(VoiceMode==CharacterVoiceMode.Clips && !cue.Failed)
+                            ShortVoice.Play(Emotion=="惊讶"?"surprised":Emotion=="开心"?"happy":"curious",queue.Turn+"-"+cue.Index,1);
+                    }
                     else if (Guid.TryParse(Path.GetFileNameWithoutExtension(cue.Audio), out _) && cue.Audio.EndsWith(".wav") && !cue.Audio.Contains("/"))
                     {
                         if(!Thinking && string.IsNullOrEmpty(Subtitle))Thinking=true;
@@ -473,11 +485,23 @@ namespace LingChatXR.Chat
         private void TryStageDecision()
         {
             // 接收和显示可能错序；只消费实际正在播放的句段，超时/切模型/重放均不追补。
-            if(currentCue==null||!presentationStarted||(!currentCue.Failed&&!Voice.IsPlaying)||motionAvatar==null||!stageDecisions.TryGetValue(currentCue.Index,out var decision))return;
+            if(currentCue==null||!presentationStarted||(!currentCue.Failed&&VoiceMode==CharacterVoiceMode.Tts&&!Voice.IsPlaying)||motionAvatar==null||!stageDecisions.TryGetValue(currentCue.Index,out var decision))return;
             stageDecisions.Remove(currentCue.Index);
             var stage=FindAnyObjectByType<FeiyuPreview>();
             if(stage==null||stage.Avatar!=motionAvatar||Time.unscaledTime-decision.arrived>10)return;
             _=motionAvatar.Motions.Decide(queue.Turn,decision.item.stageRequestId,decision.item.stageAction.action);
+        }
+        // 互动打断仅取消旧角色发声与迟到台词，麦克风和空间动作保持各自生命周期。
+        public void InterruptCharacterVoice()
+        {
+            if (!Busy && Voice.CurrentKind != VoiceKind.Dialogue) return;
+            ++epoch; queue.Cancel(); currentCue=null; writer.Cancel(); motionWriter.Cancel();
+            Voice.Stop(); Effects.Stop(); Thinking=false; Busy=false; stageDecisions.Clear();
+            if (Connected && session != null && isActiveAndEnabled && !Stopping)
+            {
+                Stopping=true; StartCoroutine(StopRemote(session,0));
+            }
+            Notify();
         }
         public void Stop()=>StopGeneration(0);
         private void StopGeneration(long expectedGeneration)

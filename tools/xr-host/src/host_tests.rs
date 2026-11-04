@@ -27,7 +27,7 @@ async fn fixture(replies:Vec<&str>,voice:Arc<VoiceFixture>)->Shared {
     for role in ["feiyu","ling-demo"] {sessions.insert(role.into(),Session{id:role.into(),role_id:role.into(),generation:1,history:vec![],sentences:vec![],events:vec![],cancel:None,busy:true});}
     Arc::new(Host{store_writer:Mutex::new(()),voice_queue:Default::default(),token:"fixture-only".into(),root,llm:RwLock::new(client.clone()),settings_path:None,translator:Translator::new(Arc::new(RwLock::new(Some(client))),true),voice,sessions:Mutex::new(sessions)})
 }
-fn request()->Turn {Turn{session_id:"feiyu".into(),text:"".into(),retry_turn:"".into(),retry_index:0,test_voice:false,director:false,available:vec![],style:"normal".into(),previous_pose:String::new()}}
+fn request()->Turn {Turn{voice_mode:String::new(),session_id:"feiyu".into(),text:"".into(),retry_turn:"".into(),retry_index:0,test_voice:false,director:false,available:vec![],style:"normal".into(),previous_pose:String::new()}}
 
 struct DirectorFixture { gate:Arc<Notify>, calls:Arc<AtomicUsize> }
 #[async_trait] impl LlmProvider for DirectorFixture {
@@ -226,4 +226,20 @@ async fn older_history_pages_are_stable_while_new_rows_arrive() {
         assert_eq!(page["historyBefore"],start);assert_eq!(page["history"][0]["text"],start.to_string());
         assert_eq!(page["history"].as_array().unwrap().len(),before-start);
     }
+}
+
+#[tokio::test]
+async fn local_voice_mode_skips_translation_and_tts_but_delivers_text() {
+    let voice = Arc::new(VoiceFixture { calls:AtomicUsize::new(0), fail_first:true, gate:None });
+    // 空翻译夹具一旦被调用就失败，证明该路径不依赖译文。
+    let h = fixture(vec![],voice.clone()).await;
+    let mut sentence = Sentence { message:"你好呀。".into(),emotion:"开心".into(),..Default::default() };
+    deliver(&h,"feiyu",1,"local",&mut sentence,false,true).await;
+    assert_eq!(voice.calls.load(Ordering::SeqCst),0);
+    let sessions=h.sessions.lock().await;
+    let s=&sessions["feiyu"];
+    assert_eq!(s.history.len(),1);
+    assert_eq!(s.sentences.len(),1);
+    assert!(s.events.iter().any(|e|e.kind=="silent" && e.message=="你好呀。" && e.audio_file.is_empty()));
+    assert!(!s.events.iter().any(|e|e.kind=="translating" || e.kind=="synthesizing"));
 }

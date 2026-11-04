@@ -84,9 +84,10 @@ pub async fn history_page(State(h):State<Shared>,headers:HeaderMap,Query(req):Qu
     Ok(Json(json!({"historyBefore":start,"history":&s.history[start..end]})))
 }
 #[derive(Deserialize)] #[serde(rename_all="camelCase")]
-pub struct Turn {pub session_id:String, #[serde(default)] pub text:String, #[serde(default)] pub retry_turn:String, #[serde(default)] pub retry_index:usize, #[serde(default)] pub test_voice:bool, #[serde(default)] pub director:bool, #[serde(default)] pub available:Vec<crate::stage_action::Candidate>, #[serde(default)] pub style:String, #[serde(default)] pub previous_pose:String}
+pub struct Turn {pub session_id:String, #[serde(default)] pub voice_mode:String, #[serde(default)] pub text:String, #[serde(default)] pub retry_turn:String, #[serde(default)] pub retry_index:usize, #[serde(default)] pub test_voice:bool, #[serde(default)] pub director:bool, #[serde(default)] pub available:Vec<crate::stage_action::Candidate>, #[serde(default)] pub style:String, #[serde(default)] pub previous_pose:String}
 pub async fn turn(State(h):State<Shared>,headers:HeaderMap,Json(req):Json<Turn>)->ApiResult {
     auth(&h,&headers)?;
+    if !["", "tts", "clips", "muted"].contains(&req.voice_mode.as_str()) { return Err((StatusCode::BAD_REQUEST,"Invalid voice mode")); }
     if !crate::stage_action::valid_candidates(&req.available){return Err((StatusCode::BAD_REQUEST,"Invalid motion capabilities"));}
     if req.text.chars().count()>2000 || (req.text.trim().is_empty() && req.retry_turn.is_empty() && !req.test_voice){return Err((StatusCode::BAD_REQUEST,"Empty or oversized input"));}
     let mut all=h.sessions.lock().await;
@@ -157,12 +158,14 @@ pub fn parse(text:&str)->Vec<Sentence> {
 pub fn japanese(text:&str)->bool {!text.trim().is_empty()&&text.chars().any(|c|('\u{3040}'..='\u{30ff}').contains(&c))}
 async fn run(h:Shared,id:String,g:u64,turn:String,role:String,history:Vec<History>,req:Turn,retry:Option<Sentence>) {
     let replay=retry.is_some();
-    if let Some(mut s)=retry {synthesize(&h,&id,g,&turn,&mut s,true).await;return;}
-    if req.test_voice {let mut s=Sentence{message:"你好，我是小肥鱼。很高兴见到你。".into(),tts_text:"こんにちは。会えてうれしいです。".into(),emotion:"开心".into(),..Default::default()};synthesize(&h,&id,g,&turn,&mut s,false).await;return;}
+    let skip_voice = req.voice_mode=="clips" || req.voice_mode=="muted";
+    if let Some(mut s)=retry {deliver(&h,&id,g,&turn,&mut s,true,skip_voice).await;return;}
+    if req.test_voice {let mut s=Sentence{message:"你好，我是小肥鱼。很高兴见到你。".into(),tts_text:"こんにちは。会えてうれしいです。".into(),emotion:"开心".into(),..Default::default()};deliver(&h,&id,g,&turn,&mut s,false,skip_voice).await;return;}
     {
         h.event(&id,g,&turn,0,"thinking","思考中","").await;
         let name=if role=="feiyu"{"小肥鱼"}else{"钦灵（测试会话）"};
-        let mut messages=vec![LlmMessage::system(format!("你是{name}，友好、自然、简短地用中文与用户聊天。这是独立 XR 试玩会话。每轮回复一到三句，每句按 LingChat 格式输出：【情绪】中文正文（可选的简短动作）<对应的自然日语译文>。情绪可为正常、开心、悲伤、害羞、惊讶、思考。只扮演自己，不代替用户发言，不输出分析或工具调用。"))];
+        let spoken = if skip_voice { "<>（只写结束标记，不生成配音译文）" } else { "<对应的自然日语译文>" };
+        let mut messages=vec![LlmMessage::system(format!("你是{name}，友好、自然、简短地用中文与用户聊天。这是独立 XR 试玩会话。每轮回复一到三句，每句按 LingChat 格式输出：【情绪】中文正文（可选的简短动作）{spoken}。情绪可为正常、开心、悲伤、害羞、惊讶、思考。只扮演自己，不代替用户发言，不输出分析或工具调用。"))];
         for row in history.iter().rev().take(30).collect::<Vec<_>>().into_iter().rev(){messages.push(if row.speaker=="user"{LlmMessage::user(&row.text)}else{LlmMessage::assistant(&row.text)});}
         messages.push(LlmMessage::user(req.text.clone()));
         // 完整句段到达即进入有界合成队列；后续 LLM 流继续读取，不等整轮结束。
@@ -205,7 +208,7 @@ async fn run(h:Shared,id:String,g:u64,turn:String,role:String,history:Vec<Histor
                         }
                     });
                 }
-                synthesize(&h,&id,g,&turn,&mut sentence,replay).await;
+                deliver(&h,&id,g,&turn,&mut sentence,replay,skip_voice).await;
             }
             let _=decisions.join_next().await;
         };
@@ -213,9 +216,20 @@ async fn run(h:Shared,id:String,g:u64,turn:String,role:String,history:Vec<Histor
     }
 }
 async fn synthesize(h:&Shared,id:&str,g:u64,turn:&str,sentence:&mut Sentence,replay:bool) {
+    deliver(h,id,g,turn,sentence,replay,false).await;
+}
+async fn deliver(h:&Shared,id:&str,g:u64,turn:&str,sentence:&mut Sentence,replay:bool,skip_voice:bool) {
         if !h.current(id,g).await{return;}sentence.turn_id=turn.into();
         if !replay {if let Some(s)=h.sessions.lock().await.get_mut(id).filter(|s|s.generation==g){s.history.push(History{speaker:"assistant".into(),text:sentence.message.clone()});}}
         h.event(id,g,turn,sentence.index,"text",&sentence.message,"").await;
+        if skip_voice {
+            sentence.audio_file.clear();
+            if let Some(session)=h.sessions.lock().await.get_mut(id).filter(|s|s.generation==g) {
+                session.sentences.push(sentence.clone());
+            }
+            h.event(id,g,turn,sentence.index,"silent",&sentence.message,"").await;
+            return;
+        }
         if !japanese(&sentence.tts_text) {
             h.event(&id,g,&turn,sentence.index,"translating","准备语音","").await;
             let mut segments=vec![EmotionSegment{following_text:sentence.message.clone(),..Default::default()}];

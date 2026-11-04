@@ -52,3 +52,7 @@ evidence/unity6-smoke-failure.txt
 
 # User-provided grabbed animation: local use only.
 LingChat-XR/Assets/StreamingAssets/Motions/local-grab/
+
+# 临时合成短声可通过导出入口重建，尚未进行发布许可验收。
+LingChat-XR/Assets/LingChatXR/Resources/LocalInteractionVoice/
+LingChat-XR/Assets/LingChatXR/Resources/LocalInteractionVoice.meta

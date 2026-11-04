@@ -6,6 +6,7 @@ mod settings;
 mod stage_action;
 mod gateway;
 mod asr;
+mod reaction_export;
 mod asr_source;
 use std::{sync::Arc,path::PathBuf};
 use ai_service::{translator::Translator,tts::local::{LocalTtsEngine,LocalTtsPaths,adapter::LocalTtsAdapter}};
@@ -33,6 +34,7 @@ async fn main()->anyhow::Result<()> {
     }
     let translator=Translator::new(Arc::new(RwLock::new(Some(translation_client))),true);
     let voice=Arc::new(LocalTtsAdapter::with_params(Arc::new(LocalTtsEngine::new()),"ling-v2".into(),0,0,0.,1.,LocalTtsPaths{root:models}));
+    if std::env::args().any(|a|a=="--export-reactions") { return reaction_export::export(voice, &root.parent().unwrap().join("reaction-clips")).await; }
     if std::env::args().any(|a|a=="--verify-translation") {
         let mut segments=vec![ai_service::message_system::processor::EmotionSegment{following_text:"今天也很高兴见到你，我们慢慢聊吧。".into(),..Default::default()}];
         anyhow::ensure!(translator.translate_segments_to(&mut segments,false,"ja").await?,"Translation incomplete");

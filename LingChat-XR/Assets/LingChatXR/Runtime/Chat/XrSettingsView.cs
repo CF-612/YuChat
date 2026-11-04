@@ -91,12 +91,15 @@ namespace LingChatXR.Chat
             var roles=new List<string>{"小肥鱼","Ling 演示角色"};var role=new DropdownField("对话角色",roles,dialogue.role=="ling-demo"?1:0);card.Add(role);
             role.RegisterValueChangedCallback(e=>{dialogue.role=e.newValue==roles[1]?"ling-demo":"feiyu";Changed();});
             Label(card,"切换对话角色会切换人设和历史，保留模型外观；两者目前共用默认日语声线。","settings-description");
+            var mode = new DropdownField("角色声音",new System.Collections.Generic.List<string>{"拟声短声","静音","原日语 TTS"},dialogue.voiceMode=="tts"?2:dialogue.voiceMode=="muted"?1:0);
+            mode.name="settings-voice-mode"; card.Add(mode);
+            mode.RegisterValueChangedCallback(e=>{dialogue.voiceMode=mode.index==2?"tts":mode.index==1?"muted":"clips";Changed();});
             Slider(card,"语音音量",dialogue.voice,v=>dialogue.voice=v,"settings-voice");Slider(card,"音效音量",dialogue.effects,v=>dialogue.effects=v,"settings-effects");
             Toggle(card,"思考与对话音效",dialogue.effectEnabled,v=>dialogue.effectEnabled=v,"settings-fx-enabled");
             var speed=new SliderInt("中文出字速度",1,100){value=dialogue.speed,showInputField=true,name="settings-speed"};card.Add(speed);speed.RegisterValueChangedCallback(e=>{dialogue.speed=e.newValue;Changed();});
             Toggle(card,"AUTO · 语音和文字结束后自动继续",dialogue.auto,v=>dialogue.auto=v,"settings-auto");
-            var row=Box(body,"settings-inline");Button(row,"试听当前声线",chat.TestVoice,"settings-primary").SetEnabled(chat.CanSend);Button(row,"停止播放",chat.Stop,"settings-secondary");
-            Label(body,"语音由 PC 本地服务合成。日语只用于发声，正文与历史保持中文。","settings-description");
+            var row=Box(body,"settings-inline");Button(row,"试听当前声线",chat.TestVoice,"settings-primary").SetEnabled(chat.VoiceMode!=LingChatXR.Speech.CharacterVoiceMode.Tts || chat.CanSend);Button(row,"停止播放",chat.ShortVoice.StopVoice,"settings-secondary");
+            Label(body,"拟声短声在本机播放，可直接更换素材。原日语 TTS 需连接 PC；正文与历史显示中文。","settings-description");
         }
         void Interaction()
         {

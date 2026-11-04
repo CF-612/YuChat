@@ -77,7 +77,7 @@ namespace LingChatXR
         public void PreserveManualFacing(){manualFacing=true;attentionAge=0;if(preview.ViewCamera!=null)manualViewer=preview.ViewCamera.transform.position;}
         void StepAttention(float dt)
         {
-            if(Active||applicationPaused||focusLost||!IdleFacingAllowed||!preview.Ready||preview.SizeEditing||!preview.Avatar.GazeEnabled||preview.Avatar.FollowingHand||preview.Interaction.State!=PetState.Idle||!preview.Interaction.PlaneConfirmed||preview.Avatar.Motions.Busy){attentionAge=0;return;}
+            if(Active||applicationPaused||focusLost||!IdleFacingAllowed||preview.InspectingFromDesktop||!preview.Ready||preview.SizeEditing||!preview.Avatar.GazeEnabled||preview.Avatar.FollowingHand||preview.Interaction.State!=PetState.Idle||!preview.Interaction.PlaneConfirmed||preview.Avatar.Motions.Busy){attentionAge=0;return;}
             if(manualFacing)
             {
                 if(Vector3.ProjectOnPlane(preview.ViewCamera.transform.position-manualViewer,Vector3.up).magnitude<.35f)return;

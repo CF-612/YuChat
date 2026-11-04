@@ -32,10 +32,15 @@ namespace LingChatXR
         static readonly ExpressionKey ShockEye=ExpressionKey.CreateCustom("eyeCircleShock");
                 static readonly ExpressionKey SpiralEye=ExpressionKey.CreateCustom("eyeSpiral");
         bool squeezePose,heldReaction;
+        int voiceReactionSerial;
         const float DizzySeconds=3f, ScrunchSeconds=.5f;
         float dizzyUntil, landingScrunchUntil;
         bool fallingReaction, fallingDizzy, fallingScrunch;
-        public void ShakeWhileHeld(){if(spiralAvailable&&heldReaction)dizzyUntil=Time.unscaledTime+DizzySeconds;}
+        public void ShakeWhileHeld()
+        {
+            if(spiralAvailable&&heldReaction)dizzyUntil=Time.unscaledTime+DizzySeconds;
+            if(heldReaction)chat?.ShortVoice?.Play("surprised",GetInstanceID()+"-shake-"+(++voiceReactionSerial),20,true);
+        }
         private float happyBase;
         static readonly ExpressionKey MouthSmile=ExpressionKey.CreateCustom("mouthSmile");
         bool hasMouthSmile;float smileBase;
@@ -407,6 +412,13 @@ namespace LingChatXR
         public void SetSpatialFeedback(Core.PetInteraction state, float deltaTime)
         {
             if(state.State!=Core.PetState.Touched&&state.State!=Core.PetState.Idle&&(TouchSession.Active||touchExpression>0||jellyApplied||(TouchSound!=null&&TouchSound.Playing)))CancelTouch();
+            bool nowHeld = state.State==Core.PetState.Held;
+            chat?.ShortVoice?.SetHeld(nowHeld);
+            if(nowHeld && !heldReaction && !MotionPreviewMode)
+            {
+                chat?.InterruptCharacterVoice();
+                chat?.ShortVoice?.Play("curious",GetInstanceID()+"-grab-"+(++voiceReactionSerial),10);
+            }
             Motions?.SetGrabbed(state.State==Core.PetState.Held,state.State==Core.PetState.Suspended||state.State==Core.PetState.Unplaced);
             float now=Time.unscaledTime;
             if(state.State==Core.PetState.Descending && heldReaction)

@@ -52,6 +52,7 @@ namespace LingChatXR
         private readonly Vector3 viewTarget = new Vector3(-.08f, .84f, 0);
         private Vector3 previousMousePosition;
         private bool orbiting;
+        public bool InspectingFromDesktop { get; private set; }
         private XrPreferences preferences = new XrPreferences();
         private string message = "正在载入小肥鱼…";
         private int grabGeneration;
@@ -378,10 +379,16 @@ namespace LingChatXR
             if (!Ready || Interaction.State == PetState.Held) return;
             if (reset)
             {
+                InspectingFromDesktop = false;
                 previewCamera.transform.SetPositionAndRotation(initialCameraPosition, initialCameraRotation);
                 return;
             }
             if (dragPixels == Vector2.zero && scroll == 0) return;
+            if (dragPixels != Vector2.zero && !ExternalInput)
+            {
+                InspectingFromDesktop = true;
+                if (Locomotion.State == PetLocomotion.Phase.Facing) Locomotion.Cancel();
+            }
             Vector3 offset = previewCamera.transform.position - viewTarget;
             float distance = Mathf.Clamp(offset.magnitude * Mathf.Exp(-scroll * .12f), .45f, 2.5f);
             float yaw = Mathf.Atan2(offset.x, offset.z) + dragPixels.x * .006f;
@@ -463,7 +470,7 @@ namespace LingChatXR
             if (Ready)
             {
                 avatar.Motions?.SetSpatialAllowed(Interaction.PlaneConfirmed&&Interaction.State==PetState.Idle);
-                if(avatarRoot.activeSelf){avatar.GazeEnabled=preferences.gazeEnabled;avatar.SetSpatialFeedback(Interaction);avatar.Present(previewCamera.transform.position);}
+                if(avatarRoot.activeSelf){avatar.GazeEnabled=preferences.gazeEnabled && !InspectingFromDesktop;avatar.SetSpatialFeedback(Interaction);avatar.Present(previewCamera.transform.position);}
             }
         }
 
