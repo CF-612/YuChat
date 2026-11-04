@@ -17,6 +17,10 @@ use tokio::sync::{Mutex,RwLock};
 use ai_service::tts::provider::TtsAdapter;
 #[tokio::main]
 async fn main()->anyhow::Result<()> {
+    if std::env::args().any(|a|a=="--audit-session-audio") {
+        let root=PathBuf::from(std::env::var("XR_HOST_DATA")?);
+        println!("{}",serde_json::to_string_pretty(&session_store::SessionStore::audio_inventory(&root)?)?);return Ok(());
+    }
     if let Some(index)=std::env::args().position(|a|a=="--export-session-history") {
         let output=std::env::args().nth(index+1).ok_or_else(||anyhow::anyhow!("Specify a new output path"))?;
         let root=PathBuf::from(std::env::var("XR_HOST_DATA")?);

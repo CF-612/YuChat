@@ -1,5 +1,5 @@
 //! 有序追加会话增量；磁盘操作不持有宿主会话锁。旧 JSON 保留不覆盖。
-use std::{collections::HashMap, fs::{self, OpenOptions}, io::{Write,BufRead,BufReader}, path::{Path,PathBuf}, sync::Arc};
+use std::{collections::{HashMap,HashSet}, fs::{self, OpenOptions}, io::{Write,BufRead,BufReader}, path::{Path,PathBuf}, sync::Arc};
 use serde::{Serialize,Deserialize};
 use tokio::sync::Mutex;
 use crate::host::{Session,History,Sentence};
@@ -9,25 +9,64 @@ struct Record {
     version:u32, id:String, role_id:String, generation:u64,
     history_from:usize, sentences_from:usize, history:Vec<History>, sentences:Vec<Sentence>,
 }
+// 按已提交的换行边界读取，不把整份日志或未完成尾行读入会话。
+fn scan_records(path:&Path,mut accept:impl FnMut(Record)->anyhow::Result<()>)->anyhow::Result<(u64,bool)> {
+    let mut reader=BufReader::new(fs::File::open(path)?);let mut line=Vec::new();
+    let mut complete=reader.read_until(b'\n',&mut line)? as u64;
+    anyhow::ensure!(line.last()==Some(&b'\n')&&serde_json::from_slice::<serde_json::Value>(&line)?["sessionStoreVersion"]==1,"Invalid journal header");
+    loop {
+        line.clear();let count=reader.read_until(b'\n',&mut line)?;
+        if count==0{return Ok((complete,false));}
+        if line.last()!=Some(&b'\n'){return Ok((complete,true));}
+        let record:Record=serde_json::from_slice(&line)?;
+        anyhow::ensure!(record.version==1,"Unsupported record");accept(record)?;complete+=count as u64;
+    }
+}
+#[derive(Debug,Serialize,Default)]
+#[serde(rename_all="camelCase")]
+pub struct AudioInventory {
+    pub referenced_files:usize,pub referenced_bytes:u64,pub missing_references:usize,
+    pub unreferenced_files:usize,pub unreferenced_bytes:u64,pub invalid_references:usize,pub skipped_entries:usize,
+}
 pub struct SessionStore { path:PathBuf, cursors:Arc<Mutex<HashMap<String,(usize,usize)>>> }
 impl SessionStore {
     /// 离线导出给旧版使用；输入必须是停止写入后的日志或其一致性副本。
     /// 不迁移、不修复输入，不覆盖既有输出。
     pub fn export_legacy(root:&Path,output:&Path)->anyhow::Result<usize> {
-        let mut lines=BufReader::new(fs::File::open(root.join("sessions-v1.jsonl"))?).lines();
-        let header=lines.next().ok_or_else(||anyhow::anyhow!("Missing journal header"))??;
-        anyhow::ensure!(serde_json::from_str::<serde_json::Value>(&header)?["sessionStoreVersion"]==1,"Unsupported store");
         let mut sessions:HashMap<String,Session>=HashMap::new();
-        for line in lines {
-            let r:Record=serde_json::from_str(&line?)?;
-            anyhow::ensure!(r.version==1,"Unsupported record");
+        let (_,incomplete)=scan_records(&root.join("sessions-v1.jsonl"),|r| {
             let s=sessions.entry(r.id.clone()).or_insert_with(||Session::empty(r.id.clone(),r.role_id.clone()));
             anyhow::ensure!(s.role_id==r.role_id&&s.history.len()==r.history_from&&s.sentences.len()==r.sentences_from,"Invalid journal sequence");
             s.generation=r.generation;s.history.extend(r.history);s.sentences.extend(r.sentences);
-        }
+            Ok(())
+        })?;
+        anyhow::ensure!(!incomplete,"Incomplete journal; export a consistent copy");
         let data=serde_json::to_vec(&sessions)?;
         let mut file=OpenOptions::new().create_new(true).write(true).open(output)?;
         file.write_all(&data)?;file.sync_all()?;Ok(sessions.len())
+    }
+    /// 只盘点，不删除，不输出聊天正文或音频内容。建议使用离线副本。
+    pub fn audio_inventory(root:&Path)->anyhow::Result<AudioInventory> {
+        let mut refs=HashSet::new();let mut result=AudioInventory::default();
+        let mut collect=|sentences:Vec<Sentence>| {
+            for s in sentences {
+                if s.audio_file.is_empty(){continue;}
+                let name=s.audio_file.to_ascii_lowercase();
+                if name.contains(['/', '\\', ':'])||!name.ends_with(".wav")||name==".wav"{result.invalid_references+=1;continue;}
+                refs.insert(name);
+            }
+        };
+        let journal=root.join("sessions-v1.jsonl");
+        if journal.exists(){let (_,incomplete)=scan_records(&journal,|r|{collect(r.sentences);Ok(())})?;anyhow::ensure!(!incomplete,"Incomplete journal; audit a consistent copy");}
+        else if root.join("sessions.json").exists(){let sessions:HashMap<String,Session>=serde_json::from_reader(fs::File::open(root.join("sessions.json"))?)?;for s in sessions.into_values(){collect(s.sentences);}}
+        result.referenced_files=refs.len();let mut found=HashSet::new();
+        if root.join("audio").exists(){for entry in fs::read_dir(root.join("audio"))? {
+            let entry=entry?;let kind=entry.file_type()?;let name=entry.file_name().to_string_lossy().to_ascii_lowercase();
+            if !kind.is_file()||!name.ends_with(".wav"){result.skipped_entries+=1;continue;}
+            let size=entry.metadata()?.len();
+            if refs.contains(&name){found.insert(name);result.referenced_bytes+=size;}else{result.unreferenced_files+=1;result.unreferenced_bytes+=size;}
+        }}
+        result.missing_references=refs.difference(&found).count();Ok(result)
     }
     pub fn open(root:&Path)->anyhow::Result<(Self,HashMap<String,Session>)> {
         fs::create_dir_all(root)?;
@@ -51,23 +90,18 @@ impl SessionStore {
             }
             file.sync_all()?;drop(file);fs::rename(tmp,&path)?;
         } else {
-            let data=fs::read(&path)?;
-            let complete=data.iter().rposition(|b|*b==b'\n').map_or(0,|i|i+1);
-            let mut lines=data[..complete].split(|b|*b==b'\n').filter(|line|!line.is_empty());
-            anyhow::ensure!(serde_json::from_slice::<serde_json::Value>(lines.next().ok_or_else(||anyhow::anyhow!("Missing journal header"))?)?["sessionStoreVersion"]==1,"Unsupported session store");
-            for line in lines {
-                let r:Record=serde_json::from_slice(line)?;
-                anyhow::ensure!(r.version==1,"Unsupported record");
+            let (complete,incomplete)=scan_records(&path,|r| {
                 let s=sessions.entry(r.id.clone()).or_insert_with(||Session::empty(r.id.clone(),r.role_id.clone()));
                 anyhow::ensure!(s.role_id==r.role_id&&s.history_end()==r.history_from&&s.sentences.len()==r.sentences_from,"Session journal sequence mismatch");
                 s.generation=r.generation;s.history.extend(r.history);s.sentences.extend(r.sentences);
                 s.trim_saved_history(s.history_end());
-            }
-            if complete<data.len() {
+                Ok(())
+            })?;
+            if incomplete {
                 // 只有最后一个未提交的半行允许恢复；完整损坏行拒绝启动，不静默丢历史。
                 let backup=root.join(format!("sessions-incomplete-{}.jsonl",uuid::Uuid::new_v4()));
-                fs::write(backup,&data)?;
-                let file=OpenOptions::new().write(true).open(&path)?;file.set_len(complete as u64)?;file.sync_all()?;
+                fs::copy(&path,&backup)?;OpenOptions::new().write(true).open(&backup)?.sync_all()?;
+                let file=OpenOptions::new().write(true).open(&path)?;file.set_len(complete)?;file.sync_all()?;
             }
         }
         let cursors=sessions.iter().map(|(id,s)|(id.clone(),(s.history_end(),s.sentences.len()))).collect();
@@ -124,6 +158,27 @@ impl SessionStore {
 mod tests {
     use super::*;
     fn root()->PathBuf {std::env::temp_dir().join(format!("xr-store-{}",uuid::Uuid::new_v4()))}
+    #[tokio::test]
+    async fn audio_inventory_counts_unique_references_without_deleting_files() {
+        let root=root();let (store,_)=SessionStore::open(&root).unwrap();fs::create_dir(root.join("audio")).unwrap();
+        let mut s=Session::empty("s".into(),"feiyu".into());
+        for file in ["used.wav","USED.wav","missing.wav","../outside.wav",""]{s.sentences.push(Sentence{audio_file:file.into(),..Default::default()});}
+        let sessions=Mutex::new(HashMap::from([("s".into(),s)]));store.save("s",&sessions).await.unwrap();
+        fs::write(root.join("audio/used.wav"),b"1234").unwrap();fs::write(root.join("audio/orphan.wav"),b"123456").unwrap();fs::write(root.join("audio/note.txt"),b"keep").unwrap();
+        let inventory=SessionStore::audio_inventory(&root).unwrap();
+        assert_eq!(inventory.referenced_files,2);assert_eq!(inventory.referenced_bytes,4);assert_eq!(inventory.missing_references,1);
+        assert_eq!(inventory.unreferenced_files,1);assert_eq!(inventory.unreferenced_bytes,6);assert_eq!(inventory.invalid_references,1);assert_eq!(inventory.skipped_entries,1);
+        assert_eq!(fs::read_dir(root.join("audio")).unwrap().count(),3);
+    }
+    #[test]
+    fn export_and_inventory_refuse_uncommitted_tail_without_repairing_input() {
+        let root=root();let (store,_)=SessionStore::open(&root).unwrap();
+        let tail=br#"{"version":1,"id":"s","role_id":"feiyu","generation":0,"history_from":0,"sentences_from":0,"history":[],"sentences":[]}"#;
+        OpenOptions::new().append(true).open(&store.path).unwrap().write_all(tail).unwrap();
+        let before=fs::read(&store.path).unwrap();let output=root.join("export.json");
+        assert!(SessionStore::export_legacy(&root,&output).is_err());assert!(!output.exists());
+        assert!(SessionStore::audio_inventory(&root).is_err());assert_eq!(fs::read(&store.path).unwrap(),before);
+    }
     #[tokio::test]
     async fn migration_restart_and_delta_preserve_order_and_audio() {
         let root=root();fs::create_dir_all(&root).unwrap();
