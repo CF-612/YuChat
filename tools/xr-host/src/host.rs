@@ -157,6 +157,12 @@ pub async fn audio(State(h):State<Shared>,headers:HeaderMap,Path(id):Path<String
     match tokio::fs::read(h.root.join("audio").join(id)).await {Ok(bytes)=>([("content-type","audio/wav")],bytes).into_response(),Err(_)=>StatusCode::NOT_FOUND.into_response()}
 }
 pub async fn health(State(h):State<Shared>,headers:HeaderMap)->ApiResult {auth(&h,&headers)?;Ok(Json(json!({"ready":true,"voice":"ling-v2","language":"ja","model":h.llm.read().await.config().model,"requiresPc":true,"stageActions":true,"protocolVersion":2}))) }
+// 仅本机诊断入口；不返回正文、文件名、目录或凭据，不提供删除操作。
+pub async fn storage_summary(State(h):State<Shared>,headers:HeaderMap)->ApiResult {
+    auth(&h,&headers)?;
+    let data=h.store.summary().await.map_err(|_|(StatusCode::INTERNAL_SERVER_ERROR,"Storage audit failed"))?;
+    Ok(Json(json!({"schemaVersion":1,"readOnly":true,"audioReferenceScope":"committed-history","audioFileSizesAreLive":true,"storage":data})))
+}
 // 只读取宿主启动时固定的 PC 配置路径，不接收设备提交的路径或凭据。
 pub async fn reload_settings(State(h):State<Shared>,headers:HeaderMap)->ApiResult {
     auth(&h,&headers)?;

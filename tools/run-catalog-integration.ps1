@@ -41,6 +41,9 @@ try {
         Start-Sleep -Milliseconds 200
     }
     Check $ready '独立真实宿主就绪'
+    $inventory=Invoke-RestMethod ($connection.endpoint+'/storage-summary') -Headers $headers
+    Check ($inventory.readOnly-and$inventory.storage.committedSessions-eq1-and$inventory.storage.committedHistoryRows-eq155-and$inventory.storage.committedSentences-eq105) '在线只读盘点返回已提交数量'
+    Check (-not(($inventory|ConvertTo-Json -Depth 10).Contains('fixture-history'))) '容量盘点不返回历史正文'
     $catalog=Invoke-RestMethod ($connection.endpoint+'/catalog') -Headers $headers
     Check ($catalog.roles.Count-eq3) '真实路由返回三个配置角色'
     Check (-not(($catalog|ConvertTo-Json -Depth 10).Contains('private-fixture-persona'))) '公开清单不泄漏人设'
@@ -52,7 +55,7 @@ try {
     Check ($gap.cursorExpired-and$gap.history.Count-eq155-and$null-eq$gap.snapshot-and-not$gap.busy) '重启后过期游标恢复历史且不重播旧轮'
     $snapshot=Invoke-RestMethod ($connection.endpoint+"/snapshot?sessionId=fixture-session&expectedGeneration=$($session.generation)") -Headers $headers
     Check ($null-eq$snapshot.snapshot-and$snapshot.generation-eq$session.generation) '真实快照路由保持当前身份'
-    foreach($case in @(@{path='/catalog';headers=@{};status=401},@{path='/snapshot?sessionId=fixture-session&expectedGeneration=10';headers=$headers;status=409})){
+    foreach($case in @(@{path='/catalog';headers=@{};status=401},@{path='/storage-summary';headers=@{};status=401},@{path='/snapshot?sessionId=fixture-session&expectedGeneration=10';headers=$headers;status=409})){
         $code=200;try{$null=Invoke-WebRequest ($connection.endpoint+$case.path) -Headers $case.headers}catch{$code=[int]$_.Exception.Response.StatusCode}
         Check ($code-eq$case.status) ("HTTP 拒绝状态 "+$case.status)
     }

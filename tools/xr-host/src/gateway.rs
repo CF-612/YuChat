@@ -56,6 +56,7 @@ pub async fn run()->anyhow::Result<()> {
 #[cfg(test)] mod tests {
     use super::*;
     #[test] fn only_explicit_private_addresses_and_expected_routes(){
+        assert!(!allowed("GET","/storage-summary"));
         for ip in ["127.0.0.1","0.0.0.0","8.8.8.8","169.254.1.1","172.32.0.1"]{assert!(!private_address(ip.parse().unwrap()));}
         for ip in ["10.0.0.5","192.168.1.5","172.16.0.5","172.31.255.1"]{assert!(private_address(ip.parse().unwrap()));}
         assert!(!allowed("POST","/reload-settings"));assert!(!allowed("GET","/audio/../settings.json"));assert!(!allowed("GET","http://example.com"));assert!(allowed("POST","/turn"));

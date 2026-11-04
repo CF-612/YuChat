@@ -28,8 +28,29 @@ pub struct AudioInventory {
     pub referenced_files:usize,pub referenced_bytes:u64,pub missing_references:usize,
     pub unreferenced_files:usize,pub unreferenced_bytes:u64,pub invalid_references:usize,pub skipped_entries:usize,
 }
+#[derive(Debug,Serialize)]
+#[serde(rename_all="camelCase")]
+pub struct StorageSummary {
+    pub committed_sessions:usize,pub committed_history_rows:usize,pub committed_sentences:usize,
+    pub journal_bytes:u64,pub audio:AudioInventory,
+}
 pub struct SessionStore { path:PathBuf, cursors:Arc<Mutex<HashMap<String,(usize,usize)>>> }
 impl SessionStore {
+    /// 统计已提交记录。写锁只协调存储，不阻塞停止/事件使用的会话锁。
+    /// 音频文件可能仍在生成，未引用计数仅用于盘点，不能作为在线删除依据。
+    pub async fn summary(&self)->anyhow::Result<StorageSummary> {
+        let writer=self.cursors.clone().lock_owned().await;
+        let path=self.path.clone();
+        tokio::task::spawn_blocking(move || {
+            let committed_sessions=writer.len();
+            let committed_history_rows=writer.values().map(|v|v.0).sum();
+            let committed_sentences=writer.values().map(|v|v.1).sum();
+            let journal_bytes=fs::metadata(&path)?.len();
+            let audio=Self::audio_inventory(path.parent().ok_or_else(||anyhow::anyhow!("Storage root missing"))?)?;
+            drop(writer);
+            Ok(StorageSummary{committed_sessions,committed_history_rows,committed_sentences,journal_bytes,audio})
+        }).await?
+    }
     #[cfg(test)]
     pub async fn hold_writer_for_test(&self)->tokio::sync::OwnedMutexGuard<HashMap<String,(usize,usize)>> {
         self.cursors.clone().lock_owned().await

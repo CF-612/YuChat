@@ -30,6 +30,37 @@ async fn fixture(replies:Vec<&str>,voice:Arc<VoiceFixture>)->Shared {
 fn request()->Turn {Turn{voice_mode:String::new(),session_id:"feiyu".into(),text:"".into(),retry_turn:"".into(),retry_index:0,test_voice:false,director:false,available:vec![],style:"normal".into(),previous_pose:String::new()}}
 
 #[tokio::test]
+async fn storage_summary_is_read_only_authenticated_and_does_not_block_stop() {
+    let h=fixture(vec![],Arc::new(VoiceFixture{calls:AtomicUsize::new(0),fail_first:false,gate:None})).await;
+    let mut headers=HeaderMap::new();headers.insert("authorization","Bearer fixture-only".parse().unwrap());
+    assert_eq!(storage_summary(State(h.clone()),HeaderMap::new()).await.unwrap_err().0,StatusCode::UNAUTHORIZED);
+    {
+        let mut all=h.sessions.lock().await;let s=all.get_mut("feiyu").unwrap();
+        s.history.push(History{speaker:"user".into(),text:"private-history-never-return".into()});
+        s.sentences.push(Sentence{audio_file:"private-audio.wav".into(),..Default::default()});
+    }
+    h.store.save("feiyu",&h.sessions).await.unwrap();
+    std::fs::write(h.root.join("audio/private-audio.wav"),b"1234").unwrap();
+    std::fs::write(h.root.join("audio/uncommitted.wav"),b"123456").unwrap();
+    h.sessions.lock().await.get_mut("feiyu").unwrap().history.push(History{speaker:"user".into(),text:"unsaved".into()});
+    let before=std::fs::read(h.root.join("sessions-v1.jsonl")).unwrap();
+    let writer=h.store.hold_writer_for_test().await;
+    let pending=storage_summary(State(h.clone()),headers.clone());tokio::pin!(pending);
+    assert!(futures_util::poll!(&mut pending).is_pending());
+    let stopped=tokio::time::timeout(std::time::Duration::from_secs(1),stop(State(h.clone()),headers.clone(),Json(StopSession{session_id:"feiyu".into(),expected_generation:Some(1)}))).await.unwrap().unwrap();
+    assert_eq!(stopped.0["generation"],2);drop(writer);
+    let report=pending.await.unwrap().0;
+    assert_eq!(report["readOnly"],true);assert_eq!(report["audioReferenceScope"],"committed-history");
+    assert_eq!(report["storage"]["committedSessions"],1);assert_eq!(report["storage"]["committedHistoryRows"],1);assert_eq!(report["storage"]["committedSentences"],1);
+    assert_eq!(report["storage"]["audio"]["referencedBytes"],4);assert_eq!(report["storage"]["audio"]["unreferencedBytes"],6);
+    for private in ["private-history","private-audio","uncommitted.wav","fixture-only"] {assert!(!report.to_string().contains(private));}
+    assert_eq!(std::fs::read(h.root.join("sessions-v1.jsonl")).unwrap(),before);
+    assert_eq!(std::fs::read_dir(h.root.join("audio")).unwrap().count(),2);
+    std::fs::write(h.root.join("sessions-v1.jsonl"),b"corrupt-private-data").unwrap();
+    assert_eq!(storage_summary(State(h.clone()),headers).await.unwrap_err(),(StatusCode::INTERNAL_SERVER_ERROR,"Storage audit failed"));
+}
+
+#[tokio::test]
 async fn stopped_retry_waiting_for_disk_cannot_start_a_new_turn() {
     let voice=Arc::new(VoiceFixture{calls:AtomicUsize::new(0),fail_first:false,gate:None});
     let h=fixture(vec![],voice.clone()).await;
