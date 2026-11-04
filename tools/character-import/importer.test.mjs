@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { importCharacter, parseSettings, inspectVrm } from './import.mjs';
+import { validatePresentationProfile } from './presentation-profile.mjs';
 
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 function modelBytes(marker = 'one') {
@@ -178,4 +179,26 @@ test('explicit source rules and credits travel with the model and are hash-decla
   await assert.rejects(importCharacter(options), { code: 'SOURCE_RULES_REQUIRED' });
   const repeated = await importCharacter({ ...options, sourceRules });
   assert.equal(repeated.manifest.assets.length, 2);
+});
+
+test('presentation profile is explicit, portable and preserved on repeated import', async t => {
+  const options=await fixture(t);
+  const profile=path.join(options.root,'profile.json');
+  const bytes=await fs.readFile(new URL('./profiles/smallbluefish-face-v1.json',import.meta.url));
+  await fs.writeFile(profile,bytes);
+  const result=await importCharacter({...options,presentationProfile:profile});
+  assert.equal(result.manifest.presentationProfile,'presentation.json');
+  assert.equal(result.manifest.assets.find(a=>a.kind==='presentation-profile').sha256,hash(bytes));
+  assert.deepEqual(await fs.readFile(path.join(result.packageRoot,'presentation.json')),bytes);
+  await assert.rejects(importCharacter(options),{code:'PRESENTATION_PROFILE_REQUIRED'});
+  await importCharacter({...options,presentationProfile:profile});
+  const bad=JSON.parse(bytes);bad.expressions[0].semantic='typo';await fs.writeFile(profile,JSON.stringify(bad));
+  await assert.rejects(importCharacter({...options,presentationProfile:profile}),{code:'INVALID_PRESENTATION_PROFILE'});
+  assert.deepEqual(await fs.readFile(path.join(result.packageRoot,'presentation.json')),bytes);
+});
+
+test('presentation profile rejects undeclared fields instead of publishing private extensions', async () => {
+  const profile=JSON.parse(await fs.readFile(new URL('./profiles/smallbluefish-face-v1.json',import.meta.url),'utf8'));
+  assert.doesNotThrow(()=>validatePresentationProfile(profile));
+  for(const value of [{...profile,privateNote:'private-value'},{...profile,expressions:[...profile.expressions,{semantic:'new',key:'key',path:'private'}]}])assert.throws(()=>validatePresentationProfile(value));
 });

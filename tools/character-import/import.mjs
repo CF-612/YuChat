@@ -4,10 +4,11 @@ import { createHash, randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { parseDocument } from 'yaml';
+import { validatePresentationProfile } from './presentation-profile.mjs';
 
 const MAX_SETTINGS_BYTES = 2 * 1024 * 1024;
-// alpha.2 原型为 184 MiB；保留有限上限，不裁剪或重导出源资产。
-const MAX_MODEL_BYTES = 256 * 1024 * 1024;
+// V21 为约 333 MiB；保留有限上限，不裁剪或重导出源资产。
+const MAX_MODEL_BYTES = 512 * 1024 * 1024;
 const MAX_RULES_BYTES = 256 * 1024;
 const TEXT_FIELDS = new Set(['ai_name', 'ai_subtitle', 'title', 'info', 'system_prompt',
   'system_prompt_example', 'system_prompt_example_old', 'thinking_message']);
@@ -250,16 +251,24 @@ export async function importCharacter(options) {
     await rejectLinks([sourceRulesPath]);
     sourceRulesBytes = await readRegular(sourceRulesPath, MAX_RULES_BYTES);
   }
+  let presentationBytes=null, presentationSource=null;
+  if(options.presentationProfile){
+    const profilePath=path.resolve(options.presentationProfile);presentationSource=profilePath;
+    if(inside(output,profilePath)||inside(records,profilePath))fail('PROFILE_IN_OUTPUT','Use an independent profile source.');
+    await rejectLinks([profilePath]);presentationBytes=await readRegular(profilePath,65536);
+    try { validatePresentationProfile(JSON.parse(presentationBytes.toString('utf8'))); }
+    catch { fail('INVALID_PRESENTATION_PROFILE','Invalid presentation profile.'); }
+  }
   const previousRecordPath = path.join(recordRoot, 'latest.json');
   const calibrationPath = path.join(recordRoot, 'calibration.json');
-  await rejectLinks([previousRecordPath, calibrationPath, path.join(packageRoot, 'manifest.json'), path.join(packageRoot, 'model.vrm'), path.join(packageRoot, 'source-rules.txt')]);
+  await rejectLinks([previousRecordPath, calibrationPath, path.join(packageRoot, 'manifest.json'), path.join(packageRoot, 'model.vrm'), path.join(packageRoot, 'source-rules.txt'),path.join(packageRoot,'presentation.json')]);
   if (await statOrNull(previousRecordPath)) {
     const previous = JSON.parse(await fs.readFile(previousRecordPath, 'utf8'));
     if (previous.sourceId !== sourceId) fail('CHARACTER_ID_CONFLICT', 'This character ID already belongs to a different source directory.');
   }
   if (await statOrNull(packageRoot)) {
     const children = await fs.readdir(packageRoot);
-    const owned = ['manifest.json', 'model.vrm', 'source-rules.txt'];
+    const owned = ['manifest.json', 'model.vrm', 'source-rules.txt', 'presentation.json'];
     const allowed = new Set([...owned, ...owned.map(name => `${name}.meta`)]);
     if (children.some(name => !allowed.has(name))) fail('OUTPUT_NOT_OWNED', 'Existing package contains files not managed by this importer.');
     await rejectLinks(children.map(name => path.join(packageRoot, name)));
@@ -267,6 +276,7 @@ export async function importCharacter(options) {
     if (children.length) {
       const old = JSON.parse(await fs.readFile(path.join(packageRoot, 'manifest.json'), 'utf8'));
       if (old.generator !== 'lingchat-xr-character-import/0.1.0' || old.source?.sourceId !== sourceId) fail('OUTPUT_NOT_OWNED', 'Existing output is not this character importer package.');
+      if(children.includes('presentation.json')&&(!presentationBytes||old.presentationProfile!=='presentation.json'))fail('PRESENTATION_PROFILE_REQUIRED','Repeat the explicit presentation profile argument.');
       if (children.includes('source-rules.txt')) {
         if (!old.assets?.some(asset => asset.path === 'source-rules.txt' && asset.kind === 'source-rules')) fail('OUTPUT_NOT_OWNED', 'Existing source-rules.txt is not registered to the importer.');
         if (!sourceRulesBytes) fail('SOURCE_RULES_REQUIRED', 'Repeat the explicit --source-rules argument; existing rules must not be silently discarded or assigned to a different model.');
@@ -289,11 +299,13 @@ export async function importCharacter(options) {
     sourceFormat: 'lingchat-settings-yaml',
     source: { sourceId, settingsSha256, vrmSettingsVersion: Number.isInteger(settings.vrm?.version) ? settings.vrm.version : null },
     characterId,
+    ...(presentationBytes?{presentationProfile:'presentation.json'}:{}),
     displayName: typeof character.ai_name === 'string' && character.ai_name ? character.ai_name : characterId,
     character,
     voiceReference,
     model,
     assets: [
+      ...(presentationBytes?[{path: 'presentation.json',sha256:sha(presentationBytes),bytes:presentationBytes.length,kind:'presentation-profile'}]:[]),
       ...(model ? [{ path: model.path, sha256: model.sha256, bytes: model.bytes, kind: 'model' }] : []),
       ...(sourceRulesBytes ? [{ path: 'source-rules.txt', sha256: sha(sourceRulesBytes), bytes: sourceRulesBytes.length, kind: 'source-rules' }] : []),
     ],
@@ -330,9 +342,10 @@ export async function importCharacter(options) {
       await atomicWrite(path.join(packageRoot, 'source-rules.txt'), sourceRulesBytes);
       if (sha(await fs.readFile(path.join(packageRoot, 'source-rules.txt'))) !== sha(sourceRulesBytes)) fail('COPY_HASH_MISMATCH', 'Copied source rules failed SHA256 verification.');
     }
+    if(presentationBytes)await atomicWrite(path.join(packageRoot,'presentation.json'),presentationBytes);
     // The manifest is committed after the model. A failed import cannot silently load mismatched bytes.
     await atomicWrite(path.join(packageRoot, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
-    if (sha(await fs.readFile(settingsPath)) !== settingsSha256 || (modelSource && sha(await fs.readFile(modelSource)) !== model.sha256) || (sourceRulesPath && sha(await fs.readFile(sourceRulesPath)) !== sha(sourceRulesBytes))) fail('SOURCE_CHANGED_DURING_IMPORT', 'Source changed concurrently; repeat the import against a stable source.');
+    if ((presentationSource&&sha(await fs.readFile(presentationSource))!==sha(presentationBytes)) || sha(await fs.readFile(settingsPath)) !== settingsSha256 || (modelSource && sha(await fs.readFile(modelSource)) !== model.sha256) || (sourceRulesPath && sha(await fs.readFile(sourceRulesPath)) !== sha(sourceRulesBytes))) fail('SOURCE_CHANGED_DURING_IMPORT', 'Source changed concurrently; repeat the import against a stable source.');
     await atomicWrite(previousRecordPath, `${JSON.stringify({ sourceId, sourceDirectory: source, settingsSha256, modelSource, modelSha256: model?.sha256 ?? null, importedAt: new Date().toISOString() }, null, 2)}\n`);
     return { manifest, packageRoot, recordRoot };
   } finally {
@@ -342,7 +355,7 @@ export async function importCharacter(options) {
 }
 
 function cliOptions(argv) {
-  const mapping = { '--source': 'source', '--output': 'output', '--records': 'records', '--character-id': 'characterId', '--placeholder': 'placeholder', '--expected-model-sha256': 'expectedModelSha256', '--source-rules': 'sourceRules' };
+  const mapping = { '--source': 'source', '--output': 'output', '--records': 'records', '--character-id': 'characterId', '--placeholder': 'placeholder', '--expected-model-sha256': 'expectedModelSha256', '--source-rules': 'sourceRules', '--presentation-profile': 'presentationProfile' };
   const result = {};
   for (let i = 0; i < argv.length; i += 2) {
     if (!mapping[argv[i]] || !argv[i + 1] || argv[i + 1].startsWith('--')) fail('INVALID_ARGUMENT', `Unknown option or missing value: ${argv[i]}`);

@@ -13,6 +13,7 @@ namespace LingChatXR
     {
         public Vrm10Instance Instance { get; private set; }
         public CharacterPackage Package { get; private set; }
+        public PresentationProfile Presentation { get; private set; }
         public float HeightMeters { get; private set; }
         public float FootprintRadius { get; private set; }
         public float MeasuredHeightMeters { get; private set; }
@@ -27,10 +28,10 @@ namespace LingChatXR
         private Transform gaze;
         private Quaternion headRest;
         private float happyWeight;
-        static readonly ExpressionKey EyeSmile=ExpressionKey.CreateCustom("eyeSmile"), BrowHappy=ExpressionKey.CreateCustom("browHappy"),
+        ExpressionKey EyeSmile=ExpressionKey.CreateCustom("eyeSmile"), BrowHappy=ExpressionKey.CreateCustom("browHappy"),
             CheekSlashes=ExpressionKey.CreateCustom("cheekSlashes"), MouthCircle=ExpressionKey.CreateCustom("mouthOpenCircle");
-        static readonly ExpressionKey ShockEye=ExpressionKey.CreateCustom("eyeCircleShock");
-                static readonly ExpressionKey SpiralEye=ExpressionKey.CreateCustom("eyeSpiral");
+        ExpressionKey ShockEye=ExpressionKey.CreateCustom("eyeCircleShock");
+                ExpressionKey SpiralEye=ExpressionKey.CreateCustom("eyeSpiral");
         bool squeezePose,heldReaction;
         int voiceReactionSerial;
         const float DizzySeconds=3f, ScrunchSeconds=.5f;
@@ -42,7 +43,7 @@ namespace LingChatXR
             if(heldReaction)chat?.ShortVoice?.Play("surprised",GetInstanceID()+"-shake-"+(++voiceReactionSerial),20,true);
         }
         private float happyBase;
-        static readonly ExpressionKey MouthSmile=ExpressionKey.CreateCustom("mouthSmile");
+        ExpressionKey MouthSmile=ExpressionKey.CreateCustom("mouthSmile");
         bool hasMouthSmile;float smileBase;
         private float blinkBase;
         private float nextBlink;
@@ -60,8 +61,7 @@ namespace LingChatXR
         private Speech.XrSpeechController speech;
         private readonly float[] voiceSamples = new float[256];
         private float mouth;
-        public const string Alpha2Sha = "9c490a224fe7502f6be2cba929ff57445e6627bbd59986eb4ef240e79538a291";
-        private const string EyeTail5Sha = "8d399eae8f55c65a5c6f37c18864db1d441d7e2184ff83d08e97dc7a7b94e613";
+
 
         public bool UsesMouth24Face {get;private set;}
         bool spiralAvailable;
@@ -73,7 +73,8 @@ namespace LingChatXR
         public string PreviewEmotion {get;set;}
         public string EyeOwner {get;private set;}
         public string MouthOwner {get;private set;}
-        public bool IsAlpha2 => UsesMouth24Face || Package?.model?.sha256 == Alpha2Sha || Package?.model?.sha256 == EyeTail5Sha;
+        // 兼容旧检查入口；运行时能力来自显式配置，不再由模型哈希开启。
+        public bool IsAlpha2 => UsesMouth24Face || Presentation?.animeMaterials!=null || Presentation?.secondaryBodyFeedback==true;
         public bool FreezePresentation { get; set; }
         public bool GazeEnabled { get; set; } = true;
         public Chat.XrMotionPlayer Motions {get;private set;}
@@ -133,6 +134,21 @@ namespace LingChatXR
             Package = JsonUtility.FromJson<CharacterPackage>(Encoding.UTF8.GetString(manifest));
             if (Package == null || Package.schemaVersion != 1 || Package.model == null)
                 throw new InvalidDataException("Unsupported character package.");
+            if(!string.IsNullOrEmpty(Package.presentationProfile))
+            {
+                try
+                {
+                    var profileBytes=await PackageFiles.ReadAsync(folder,Package.presentationProfile,token);
+                    if(profileBytes.Length>65536)throw new InvalidDataException("表现配置过大");
+                    Presentation=JsonUtility.FromJson<PresentationProfile>(Encoding.UTF8.GetString(profileBytes));
+                    if(Presentation==null||!Presentation.Valid)throw new InvalidDataException("表现配置格式无效");
+                }
+                catch(Exception error) when(error is IOException || error is ArgumentException)
+                {Presentation=null;Debug.LogWarning("表现配置未启用，使用通用 VRM 行为："+error.Message);}
+            }
+            ExpressionKey Binding(string semantic)=>ExpressionKey.CreateCustom(Presentation?.Key(semantic)??"__unbound_"+semantic);
+            EyeSmile=Binding("eyeSmile");BrowHappy=Binding("browHappy");CheekSlashes=Binding("cheekSlashes");MouthCircle=Binding("mouthOpenCircle");
+            ShockEye=Binding("eyeCircleShock");SpiralEye=Binding("eyeSpiral");MouthSmile=Binding("mouthSmile");Blush=Binding("blush");SqueezedEyes=Binding("eyeTroubled");SqueezeClosure=Binding("troubled");
             var bytes = await PackageFiles.ReadAsync(folder, Package.model.path, token);
             if (!string.Equals(PackageFiles.Hash(bytes), Package.model.sha256, StringComparison.OrdinalIgnoreCase))
                 throw new InvalidDataException("Model SHA256 does not match manifest.");
@@ -223,8 +239,13 @@ namespace LingChatXR
             foreach(var key in Instance.Runtime.Expression.ExpressionKeys)if(key.Equals(MouthSmile)){hasMouthSmile=true;smileBase=Instance.Runtime.Expression.GetWeight(key);break;}
             foreach(var key in Instance.Runtime.Expression.ExpressionKeys){if(key.Equals(ExpressionKey.CreateCustom("eyeSqueeze"))||key.Equals(ExpressionKey.CreateCustom("eyeChevron"))||key.Equals(ExpressionKey.CreateCustom("><"))){authoredSqueeze=key;hasAuthoredSqueeze=true;}hasClosure|=key.Equals(SqueezeClosure);hasBlush|=key.Equals(Blush);hasSqueezedEyes|=key.Equals(SqueezedEyes);}
             faceKeys.UnionWith(Instance.Runtime.Expression.ExpressionKeys);
-            UsesMouth24Face=faceKeys.Contains(ShockEye)&&faceKeys.Contains(MouthCircle)&&faceKeys.Contains(EyeSmile)&&hasSqueezedEyes;
-            spiralAvailable=faceKeys.Contains(SpiralEye);
+            UsesMouth24Face=Presentation?.interactionFace==true&&faceKeys.Contains(ShockEye)&&faceKeys.Contains(MouthCircle)&&faceKeys.Contains(EyeSmile)&&hasSqueezedEyes;
+            spiralAvailable=UsesMouth24Face&&faceKeys.Contains(SpiralEye);
+            if(Presentation!=null)
+            {
+                foreach(var binding in Presentation.expressions??Array.Empty<ExpressionBinding>())
+                    if(!faceKeys.Contains(ExpressionKey.CreateCustom(binding.key)))Debug.LogWarning("表现配置缺键："+Presentation.profileId+" / "+binding.semantic+" -> "+binding.key);
+            }
             nextBlink = Time.time + 2.5f;
             originalCenters = Instance.SpringBone.Springs.ConvertAll(s => s.Center).ToArray();
             // 默认通用接线；true 仅用于保留未修正的作者基线对照，不按角色选择算法。
@@ -308,7 +329,7 @@ namespace LingChatXR
 
         public PetTouchSession TouchSession {get;}=new PetTouchSession();
         public PetTouchSound TouchSound {get;private set;}
-        static readonly ExpressionKey Blush=ExpressionKey.CreateCustom("blush"), SqueezedEyes=ExpressionKey.CreateCustom("eyeTroubled");
+        ExpressionKey Blush=ExpressionKey.CreateCustom("blush"), SqueezedEyes=ExpressionKey.CreateCustom("eyeTroubled");
                 static readonly Vector2[] IdleLooks={new Vector2(0,0),new Vector2(.16f,.05f),new Vector2(-.2f,-.04f),new Vector2(.07f,.09f),new Vector2(-.1f,-.08f),new Vector2(.24f,.02f),new Vector2(-.05f,.07f),new Vector2(.12f,-.06f)};
         static Vector2 PickIdleLook(int segment)
         {
@@ -320,7 +341,7 @@ namespace LingChatXR
             float segment=time/5.2f;int index=Mathf.FloorToInt(segment);
             return Vector2.Lerp(PickIdleLook(Mathf.Max(0,index-1)),PickIdleLook(index),Mathf.SmoothStep(0,1,(segment-index)/.48f))*Mathf.Rad2Deg;
         }
-        static readonly ExpressionKey SqueezeClosure=ExpressionKey.CreateCustom("troubled");
+        ExpressionKey SqueezeClosure=ExpressionKey.CreateCustom("troubled");
         ExpressionKey authoredSqueeze;bool hasAuthoredSqueeze;
         bool hasClosure,hasBlush,hasSqueezedEyes,idleAllowed,allowBlink=true;float previousBlink,holdLidsUntil=-1,pressEyes,idleAmount;
         public int ForeheadTapCount {get;private set;}
@@ -481,7 +502,7 @@ namespace LingChatXR
                 if(presentationChest!=null)presentationChest.localRotation*=Quaternion.Euler(-15*recoil,0,0);
                 if(presentationHead!=null)presentationHead.localRotation*=Quaternion.Euler(-8*recoil,0,0);
             }
-            if (IsAlpha2)
+            if (Presentation?.secondaryBodyFeedback==true)
             {
                 // 脚底保持贴地，仅胸部轻微前倾后收稳；口型订阅现有人声，不另建播放源。
                 fallPose=Mathf.MoveTowards(fallPose,fallTarget,dt*6);

@@ -16,6 +16,7 @@ namespace LingChatXR
         public ModelReference model;
         public InteractionBindings interactionBindings;
         public SpringPhysicsConfiguration springPhysics;
+        public string presentationProfile;
     }
 
     [Serializable] public sealed class SpringPhysicsConfiguration

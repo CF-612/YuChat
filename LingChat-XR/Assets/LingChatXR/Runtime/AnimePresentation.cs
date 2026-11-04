@@ -11,7 +11,8 @@ namespace LingChatXR
     {
         public static int Apply(FeiyuAvatar avatar)
         {
-            if(!avatar.IsAlpha2)return 0;
+            var roles=avatar.Presentation?.animeMaterials;
+            if(roles==null)return 0;
             var bridge=avatar.gameObject.GetComponent<LilToonExpressionBridge>();
             if(bridge!=null)return bridge.MaterialCount;
             // UniVRM 的表情系统先绑定原始材质，颜色动画仍由它唯一驱动。
@@ -21,7 +22,7 @@ namespace LingChatXR
             foreach(var renderer in avatar.Instance.GetComponentsInChildren<Renderer>(true))
             {
                 var materials=renderer.sharedMaterials;
-                bool hairSheets=Array.Exists(materials,m=>m!=null&&m.name.StartsWith("HairCap_ContinuousUV"));
+                bool hairSheets=Array.Exists(materials,m=>m!=null&&roles.hairSheets.Matches(m.name));
                 for(int i=0;i<materials.Length;i++)
                 {
                     var source=materials[i];if(source==null)continue;
@@ -29,10 +30,10 @@ namespace LingChatXR
                     {
                         var context=new MToon10Context(source);
                         string name=source.name.Replace(" (Instance)","");
-                        bool skin=IsSkin(name)&&!name.StartsWith("Sock_"),detail=IsDetail(name);
-                        bool cloth=name.Contains("Cloth")||name.Contains("Sock")||name.Contains("Shirt")||name.Contains("Ruffle")||name.Contains("Petal")||name=="tripo_part_4_material";
-                        bool gold=name.Contains("Gold")||name=="tripo_part_19_material"||name=="tripo_part_20_material";
-                        bool outline=context.AlphaMode==MToon10AlphaMode.Opaque&&!detail&&!name.Contains("InnerWalls");
+                        bool skin=roles.skin.Matches(name),detail=roles.detail.Matches(name);
+                        bool cloth=roles.cloth.Matches(name);
+                        bool gold=roles.gold.Matches(name);
+                        bool outline=context.AlphaMode==MToon10AlphaMode.Opaque&&!detail&&!roles.outlineExcluded.Matches(name);
                         string variant=context.AlphaMode==MToon10AlphaMode.Opaque?(outline?"OpaqueOutline":"Opaque"):
                             context.AlphaMode==MToon10AlphaMode.Cutout?"Cutout":"Transparent";
                         var template=Resources.Load<Material>("Anime/"+variant);
@@ -93,14 +94,6 @@ namespace LingChatXR
             material.SetFloat("_OutlineCull",(float)CullMode.Off);
             material.SetFloat("_OutlineZBias",material.GetFloat("_OutlineWidth")*.01f+.0002f);
             material.SetFloat("_UseShadow",0);
-        }
-        static bool IsSkin(string name)=>name.Contains("Skin")||name=="tripo_part_1_material"||name=="tripo_part_30_material.001"||name=="tripo_part_31_material.001"||name=="tripo_part_37_material.001"||name=="tripo_part_38_material.001"||name=="tripo_part_41_material.001";
-        static bool IsDetail(string name)
-        {
-            string lower=name.ToLowerInvariant();
-            foreach(var token in new[]{"eye","iris","lash","lid","mouth","oral","tooth","teeth","cheek","blush","tear","sparkle","shadow","watery","approved","deadpan","troubled","chewpressure"})
-                if(lower.Contains(token))return true;
-            return false;
         }
         public static void ConfigureStage(Camera camera)
         {

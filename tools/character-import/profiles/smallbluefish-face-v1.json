@@ -1,0 +1,120 @@
+{
+  "schemaVersion": 1,
+  "profileId": "smallbluefish-face-v1",
+  "interactionFace": true,
+  "secondaryBodyFeedback": true,
+  "expressions": [
+    {
+      "semantic": "eyeSmile",
+      "key": "eyeSmile"
+    },
+    {
+      "semantic": "browHappy",
+      "key": "browHappy"
+    },
+    {
+      "semantic": "cheekSlashes",
+      "key": "cheekSlashes"
+    },
+    {
+      "semantic": "mouthOpenCircle",
+      "key": "mouthOpenCircle"
+    },
+    {
+      "semantic": "eyeCircleShock",
+      "key": "eyeCircleShock"
+    },
+    {
+      "semantic": "eyeSpiral",
+      "key": "eyeSpiral"
+    },
+    {
+      "semantic": "mouthSmile",
+      "key": "mouthSmile"
+    },
+    {
+      "semantic": "blush",
+      "key": "blush"
+    },
+    {
+      "semantic": "eyeTroubled",
+      "key": "eyeTroubled"
+    },
+    {
+      "semantic": "troubled",
+      "key": "troubled"
+    }
+  ],
+  "animeMaterials": {
+    "skin": {
+      "contains": [
+        "Skin"
+      ],
+      "exact": [
+        "tripo_part_1_material",
+        "tripo_part_30_material.001",
+        "tripo_part_31_material.001",
+        "tripo_part_37_material.001",
+        "tripo_part_38_material.001",
+        "tripo_part_41_material.001"
+      ],
+      "excludePrefix": [
+        "Sock_"
+      ]
+    },
+    "detail": {
+      "ignoreCase": true,
+      "contains": [
+        "eye",
+        "iris",
+        "lash",
+        "lid",
+        "mouth",
+        "oral",
+        "tooth",
+        "teeth",
+        "cheek",
+        "blush",
+        "tear",
+        "sparkle",
+        "shadow",
+        "watery",
+        "approved",
+        "deadpan",
+        "troubled",
+        "chewpressure"
+      ]
+    },
+    "cloth": {
+      "contains": [
+        "Cloth",
+        "Sock",
+        "Shirt",
+        "Ruffle",
+        "Petal"
+      ],
+      "exact": [
+        "tripo_part_4_material"
+      ]
+    },
+    "gold": {
+      "contains": [
+        "Gold"
+      ],
+      "exact": [
+        "tripo_part_19_material",
+        "tripo_part_20_material"
+      ]
+    },
+    "hairSheets": {
+      "prefix": [
+        "HairCap_ContinuousUV"
+      ]
+    },
+    "outlineExcluded": {
+      "contains": [
+        "InnerWalls"
+      ]
+    }
+  }
+}
