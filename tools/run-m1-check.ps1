@@ -1,4 +1,4 @@
-param([string]$EvidenceDirectory='evidence/m1-2026-10-31/run-01',[string]$Method='LingChatXR.Editor.M1MotionProbe.Run',[switch]$AndroidBuild)
+param([string]$EvidenceDirectory='evidence/m1-2026-10-31/run-01',[string]$Method='LingChatXR.Editor.M1MotionProbe.Run',[switch]$AndroidBuild,[string]$HostConnectionPath)
 $ErrorActionPreference='Stop'
 $root=Split-Path -Parent $PSScriptRoot
 $project=Join-Path $root '.r1-unity-validation'
@@ -12,7 +12,7 @@ Copy-Item "$root/LingChat-XR/ProjectSettings" $project -Recurse -Force
 Copy-Item "$root/LingChat-XR/Assets/StreamingAssets" "$project/Assets" -Recurse -Force
 $env:XR_PREFERENCES_DIRECTORY=Join-Path $root ('.cache/m1-check/'+(Get-Date -Format 'yyyyMMdd-HHmmss'))
 New-Item -ItemType Directory -Force $env:XR_PREFERENCES_DIRECTORY|Out-Null
-$env:XR_HOST_CONNECTION=Join-Path $root '.cache/xr-host-connection.json'
+$env:XR_HOST_CONNECTION=if($HostConnectionPath){[IO.Path]::GetFullPath($HostConnectionPath)}else{Join-Path $root '.cache/xr-host-connection.json'}
 $env:XR_CAPTURE_UI='1';$env:XR_M1_EVIDENCE=$evidence
 $log=Join-Path $evidence ('M1-'+(Get-Date -Format 'yyyyMMdd-HHmmss')+'.log')
 $targetArgument='-buildTarget Win64'
