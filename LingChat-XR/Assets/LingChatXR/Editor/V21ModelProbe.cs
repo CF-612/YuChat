@@ -58,11 +58,57 @@ namespace LingChatXR.Editor
             foreach(string name in names)
                 if(!expression.ExpressionKeys.Contains(ExpressionKey.CreateCustom(name)))throw new Exception("Missing expression: "+name);
             avatar.Instance.UpdateType=Vrm10Instance.UpdateTypes.None;
+            if(Environment.GetEnvironmentVariable("XR_V21_BIND_AUDIT")=="1")
+            {
+                var rows=new JArray();
+                var shock=avatar.Instance.Vrm.Expression.Clips.First(x=>avatar.Instance.Vrm.Expression.CreateKey(x.Clip).Equals(ExpressionKey.CreateCustom("eyeCircleShock"))).Clip;
+                foreach(var key in expression.ExpressionKeys)expression.SetWeight(key,0);
+                expression.SetWeight(ExpressionKey.CreateCustom("eyeCircleShock"),1);
+                for(int phase=0;phase<3;phase++)
+                {
+                    if(phase==1){expression.SetWeight(ExpressionKey.Blink,1);avatar.Instance.LookAtTarget.position=new Vector3(1,1,1);}
+                    if(phase==2)
+                    {
+                        var flags=System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic;
+                        typeof(FeiyuAvatar).GetField("heldReaction",flags).SetValue(avatar,true);
+                        typeof(FeiyuAvatar).GetMethod("ComposeFace",flags).Invoke(avatar,new object[]{1f/60,false});
+                    }
+                    avatar.Instance.Runtime.Process();
+                    var bindings=new JArray();
+                    foreach(var b in shock.MorphTargetBindings)
+                    {
+                        var tr=avatar.Instance.transform.Find(b.RelativePath);
+                        var renderer=tr==null?null:tr.GetComponent<SkinnedMeshRenderer>();
+                        bindings.Add(new JObject{["path"]=b.RelativePath,["index"]=b.Index,["key"]=renderer==null?"MISSING":renderer.sharedMesh.GetBlendShapeName(b.Index),["expected"]=b.Weight*100,["actual"]=renderer==null?-1:renderer.GetBlendShapeWeight(b.Index)});
+                    }
+                    rows.Add(new JObject{["phase"]=phase,["shock"]=expression.GetWeight(ExpressionKey.CreateCustom("eyeCircleShock")),["blinkInput"]=expression.GetWeight(ExpressionKey.Blink),["bindings"]=bindings});
+                    yield return null;
+                }
+                File.WriteAllText(Path.Combine(output,"binding-audit.json"),rows.ToString());
+                yield break;
+            }
             var cam=new GameObject("V21 camera").AddComponent<Camera>();
             cam.orthographic=true;cam.orthographicSize=.15f;cam.nearClipPlane=.001f;
             cam.backgroundColor=new Color(.1f,.14f,.19f);cam.clearFlags=CameraClearFlags.SolidColor;
             cam.transform.position=new Vector3(0,.14f,.65f);cam.transform.LookAt(new Vector3(0,.13f,0));
             new GameObject("Light").AddComponent<Light>().type=LightType.Directional;RenderSettings.ambientLight=Color.white;
+            if(Environment.GetEnvironmentVariable("XR_V21_DRAW_AUDIT")=="1")
+            {
+                if(Environment.GetEnvironmentVariable("XR_V21_LILTOON")=="1")AnimePresentation.Apply(avatar);
+                var audit=new V21EyeDrawAudit();
+                foreach(string state in new[]{"neutral","shock"})
+                {
+                    foreach(var key in expression.ExpressionKeys)expression.SetWeight(key,0);
+                    if(state=="shock")expression.SetWeight(ExpressionKey.CreateCustom("eyeCircleShock"),1);
+                    avatar.Instance.Runtime.Process();
+                    yield return null;yield return null;
+                    Camera.CameraCallback callback=c=>{if(c==cam)audit.Capture(avatar,cam,output,state);};
+                    Camera.onPreRender+=callback;
+                    try{Capture(cam,Path.Combine(output,state+"-draw.png"));}
+                    finally{Camera.onPreRender-=callback;}
+                }
+                yield break;
+            }
             var states=new[]{new float[8],new[]{1f,1f,.5f,0f,0f,0f,0f,0f},new[]{0f,0f,0f,0f,1f,1f,0f,0f},new[]{0f,0f,0f,0f,0f,1f,1f,0f},new float[8]};
             for(int state=0;state<states.Length;state++)
             {
