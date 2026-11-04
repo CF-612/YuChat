@@ -17,9 +17,9 @@ pub struct Event { pub cursor:usize, pub session_id:String, pub role_id:String, 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all="camelCase")]
 pub struct Session { pub id:String, pub role_id:String, pub generation:u64, pub history:Vec<History>, pub sentences:Vec<Sentence>, #[serde(skip)] pub events:Vec<Event>, #[serde(skip)] pub busy:bool, #[serde(skip)] cancel:Option<tokio::sync::oneshot::Sender<()>> }
-pub struct VoiceQueue { slots:tokio::sync::Semaphore, engine:Mutex<()> }
+pub struct VoiceQueue { slots:Arc<tokio::sync::Semaphore>, engine:Mutex<()> }
 impl Default for VoiceQueue {
-    fn default()->Self {Self{slots:tokio::sync::Semaphore::new(8),engine:Mutex::new(())}}
+    fn default()->Self {Self{slots:Arc::new(tokio::sync::Semaphore::new(8)),engine:Mutex::new(())}}
 }
 pub struct Host { pub store_writer:Mutex<()>, pub voice_queue:VoiceQueue, pub token:String, pub root:PathBuf, pub llm:RwLock<Arc<LlmClient>>, pub settings_path:Option<PathBuf>, pub translator:Translator, pub voice:Arc<dyn TtsAdapter>, pub sessions:Mutex<HashMap<String,Session>> }
 pub type Shared = Arc<Host>;
@@ -239,11 +239,20 @@ async fn deliver(h:&Shared,id:&str,g:u64,turn:&str,sentence:&mut Sentence,replay
         if !h.current(&id,g).await{return;}let mut error="";
         if !japanese(&sentence.tts_text){error="翻译未完成，中文已保留，可重试语音";}else if sentence.audio_file.is_empty() {
             h.event(&id,g,&turn,sentence.index,"synthesizing","合成中","").await;
-            if let Ok(_slot)=h.voice_queue.slots.try_acquire() {
-                let _engine=h.voice_queue.engine.lock().await;
-                if !h.current(id,g).await{return;}
-                match h.voice.generate_voice(&sentence.tts_text,"").await {
-                    Ok(bytes) if bytes.starts_with(b"RIFF")=> {
+            if let Ok(slot)=h.voice_queue.slots.clone().try_acquire_owned() {
+                // 请求取消只丢弃等待者；已开始的推理持有引擎直到归还，不能中途 drop。
+                let owner=h.clone(); let session=id.to_owned(); let text=sentence.tts_text.clone();
+                let job=tokio::spawn(async move {
+                    let _slot=slot;
+                    let _engine=owner.voice_queue.engine.lock().await;
+                    if !owner.current(&session,g).await {return Ok(None);}
+                    let bytes=owner.voice.generate_voice(&text,"").await?;
+                    if !owner.current(&session,g).await {return Ok(None);}
+                    Ok::<_,anyhow::Error>(Some(bytes))
+                });
+                match job.await {
+                    Ok(Ok(None))=>return,
+                    Ok(Ok(Some(bytes))) if bytes.starts_with(b"RIFF")=> {
                         if !h.current(id,g).await{return;}
                         let file=format!("{}.wav",Uuid::new_v4());
                         if tokio::fs::write(h.root.join("audio").join(&file),bytes).await.is_ok(){sentence.audio_file=file;}

@@ -173,7 +173,7 @@ async fn full_voice_queue_rejects_overflow_and_skips_cancelled_jobs() {
 }
 
 #[tokio::test]
-async fn stopping_blocked_turn_releases_voice_lane_for_next_turn() {
+async fn stopping_blocked_turn_preserves_inference_until_engine_is_returned() {
     let gate=Arc::new(Notify::new());
     let voice=Arc::new(VoiceFixture{calls:AtomicUsize::new(0),fail_first:false,gate:Some(gate.clone())});
     let h=fixture(vec![],voice.clone()).await;
@@ -188,7 +188,10 @@ async fn stopping_blocked_turn_releases_voice_lane_for_next_turn() {
         }).await.unwrap();
         if expected<3 {
             let _=stop(State(h.clone()),headers.clone(),Json(StopSession{session_id:"feiyu".into(),expected_generation:None})).await.unwrap();
-        } else {gate.notify_one();}
+            // 已取消等待者，但正在运行的引擎仍保留所有权，不能提前释放 lane。
+            assert!(h.voice_queue.engine.try_lock().is_err());
+        }
+        gate.notify_one();
     }
     tokio::time::timeout(std::time::Duration::from_secs(3),async {
         while h.sessions.lock().await["feiyu"].busy {tokio::task::yield_now().await;}
@@ -210,6 +213,38 @@ async fn expired_cursor_returns_history_instead_of_incomplete_event_stream() {
         assert_eq!(reply["oldestCursor"],3);
         if gap {assert!(reply["history"].is_array());assert_eq!(reply["events"].as_array().unwrap().len(),0);}
     }
+}
+
+#[tokio::test]
+async fn cancelled_waiter_keeps_engine_and_new_turn_waits_for_safe_completion() {
+    let gate=Arc::new(Notify::new());
+    let voice=Arc::new(VoiceFixture{calls:AtomicUsize::new(0),fail_first:false,gate:Some(gate.clone())});
+    let h=fixture(vec![],voice.clone()).await;
+    h.sessions.lock().await.get_mut("feiyu").unwrap().busy=false;
+    let mut headers=HeaderMap::new(); headers.insert("authorization","Bearer fixture-only".parse().unwrap());
+    let mut req=request(); req.test_voice=true;
+    let _=turn(State(h.clone()),headers.clone(),Json(req)).await.unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(3),async {
+        while voice.calls.load(Ordering::SeqCst)<1 {tokio::task::yield_now().await;}
+    }).await.unwrap();
+    let _=stop(State(h.clone()),headers.clone(),Json(StopSession{session_id:"feiyu".into(),expected_generation:None})).await.unwrap();
+    let mut req=request(); req.test_voice=true;
+    let _=turn(State(h.clone()),headers,Json(req)).await.unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(3),async {
+        while h.voice_queue.slots.available_permits()!=6 {tokio::task::yield_now().await;}
+    }).await.unwrap();
+    assert_eq!(voice.calls.load(Ordering::SeqCst),1,"新轮不能并发进入未归还的引擎");
+    assert!(h.voice_queue.engine.try_lock().is_err());
+    gate.notify_one();
+    tokio::time::timeout(std::time::Duration::from_secs(3),async {
+        while voice.calls.load(Ordering::SeqCst)<2 {tokio::task::yield_now().await;}
+    }).await.unwrap();
+    gate.notify_one();
+    tokio::time::timeout(std::time::Duration::from_secs(3),async {
+        while h.sessions.lock().await["feiyu"].busy {tokio::task::yield_now().await;}
+    }).await.unwrap();
+    assert_eq!(h.sessions.lock().await["feiyu"].events.iter().filter(|e|e.kind=="audio").count(),1);
+    assert_eq!(std::fs::read_dir(h.root.join("audio")).unwrap().count(),1,"旧推理不得写缓存");
 }
 
 #[tokio::test]
