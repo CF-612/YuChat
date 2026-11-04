@@ -95,6 +95,17 @@ namespace LingChatXR.Editor
             live.Interaction.StepDescent(1,live.Interaction.Generation);
             live.HandleViewInput(Vector2.zero,0,true);
             Check(!live.InspectingFromDesktop,"F 重置退出查看模式");
+            clips.StopVoice();
+            float waitUntil=Time.unscaledTime+2.1f;
+            while(Time.unscaledTime<waitUntil)yield return null;
+            starts=0;
+            avatar.PointerContactHeld=true;
+            Check(live.Interaction.BeginTouch("short-voice-probe"),"进入持续抚摸状态");
+            waitUntil=Time.unscaledTime+.8f;
+            while(Time.unscaledTime<waitUntil){avatar.SetFeedback(true,false);yield return null;}
+            Check(starts==1,"持续抚摸会话只触发一次开心短声");
+            live.Interaction.EndTouch("short-voice-probe");
+            avatar.CancelTouch();
         }
         static void Finish(int code)
         {

@@ -328,11 +328,13 @@ namespace LingChatXR
         public bool TryForeheadTap()
         {
             if(MotionPreviewMode||Instance==null||suspended||Motions.Busy||pressTarget>.015f||Time.unscaledTime-lastTap<.55f)return false;
-            tapAge=0;lastTap=Time.unscaledTime;ForeheadTapCount++;return true;
+            tapAge=0;lastTap=Time.unscaledTime;ForeheadTapCount++;
+            chat?.ShortVoice?.Play("protest",GetInstanceID()+"-tap-"+(++voiceReactionSerial),5);
+            return true;
         }
         float touchExpression,pressTarget,jelly,jellyVelocity;
         Vector3 visualScale,visualPosition,headScale;
-        bool jellyApplied;
+        bool jellyApplied, petVoiceAttempted;
         public float TouchCompression=>jelly;
         public bool PointerContactHeld {get;set;}
         public void CancelTouch()
@@ -385,7 +387,7 @@ namespace LingChatXR
         public void SetFeedback(bool isTouching, bool isSuspended, bool cancelTouch=false)
         {
             if(cancelTouch)CancelTouch();
-            if(isTouching){TouchSession.Begin(Time.unscaledTime,speech!=null&&speech.IsPlaying);TouchSession.Contact(true,Time.unscaledTime,speech!=null&&speech.IsPlaying);}
+            if(isTouching){if(!TouchSession.Active)petVoiceAttempted=false;TouchSession.Begin(Time.unscaledTime,speech!=null&&speech.IsPlaying);TouchSession.Contact(true,Time.unscaledTime,speech!=null&&speech.IsPlaying);}
             if(!isTouching&&TouchSession.Active){if(PointerContactHeld&&!isSuspended)TouchSession.Contact(false,Time.unscaledTime,speech!=null&&speech.IsPlaying);else TouchSession.End(Time.unscaledTime,speech!=null&&speech.IsPlaying,isSuspended);}
             if(touching&&!isTouching&&!cancelTouch&&!isSuspended)holdLidsUntil=Time.unscaledTime+.45f;
             touching = isTouching;
@@ -451,6 +453,11 @@ namespace LingChatXR
             RestoreJelly();
             float dt = Mathf.Min(Time.unscaledDeltaTime, 0.05f);
             TouchSession.Tick(Time.unscaledTime,speech!=null&&speech.IsPlaying);
+            if(!MotionPreviewMode && TouchSession.Active && TouchSession.Duration>=.45f && !petVoiceAttempted)
+            {
+                petVoiceAttempted=true;
+                chat?.ShortVoice?.Play("happy",GetInstanceID()+"-pet-"+(++voiceReactionSerial),0);
+            }
             TouchSound?.Tick(touching&&!suspended,Time.unscaledTime,chat?.Effects?.Volume??.8f,(chat?.Effects?.Enabled??true)&&!(chat?.VoiceInputActive??false),pressTarget>(squeezePose?.032f:.046f));
             bool holdFace=!suspended&&(touching||Time.unscaledTime<holdLidsUntil);
             touchExpression=Mathf.Lerp(touchExpression,holdFace?1:0,1-Mathf.Exp(-dt/(holdFace?.1f:.32f)));
