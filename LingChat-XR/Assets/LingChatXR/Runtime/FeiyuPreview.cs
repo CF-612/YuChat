@@ -24,6 +24,7 @@ namespace LingChatXR
         private CancellationTokenSource loadCancellation;
         private readonly SemaphoreSlim loadGate = new SemaphoreSlim(1, 1);
         private int loadRevision;
+        private string requestedCharacterFolder;
         private bool welcomeConsumed;
         private ContactShadow contactShadow;
         private string preferenceDirectory;
@@ -145,9 +146,10 @@ namespace LingChatXR
         public async Task<bool> SwitchCharacterAsync(string selectedFolder, CancellationToken cancellationToken=default)
         {
             ValidateFolder(selectedFolder);
-            if(this==null||!isActiveAndEnabled)return false;
+            if(this==null||!isActiveAndEnabled||cancellationToken.IsCancellationRequested)return false;
             lifetime = lifetime ?? new CancellationTokenSource();
             int revision=++loadRevision;
+            requestedCharacterFolder=selectedFolder;
             loadCancellation?.Cancel();
             var request=CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token,cancellationToken);
             loadCancellation=request;
@@ -174,7 +176,10 @@ namespace LingChatXR
                 string saved = PreferencePath(package.model.sha256);
                 if (File.Exists(saved))
                 {
-                    var candidate = PreferenceFiles.Load<XrPreferences>(saved);
+                    XrPreferences candidate=null;
+                    try{candidate=PreferenceFiles.Load<XrPreferences>(saved);}
+                    catch(Exception e)when(PreferenceFiles.IsStorageError(e))
+                    {Debug.LogWarning("XR_MODEL_PREFERENCES_UNREADABLE: 原文件保留，本次使用默认校准。");}
                     if (candidate != null && (candidate.version == 1 || candidate.version == 2) && candidate.modelSha256 == package.model.sha256 &&
                         IsRange(candidate.heightMeters, 0.12f, 0.45f) && IsRange(candidate.halfWidth, 0.2f, 0.6f) && IsRange(candidate.halfDepth, 0.2f, 0.4f))
                     {
@@ -226,7 +231,7 @@ namespace LingChatXR
         }
 
         public void CancelCharacterLoad()=>loadCancellation?.Cancel();
-        public Task<bool> RetryCharacterLoadAsync()=>SwitchCharacterAsync(characterFolder);
+        public Task<bool> RetryCharacterLoadAsync()=>SwitchCharacterAsync(requestedCharacterFolder??characterFolder);
         private void ClearCharacter()
         {
             SizeEditing=false;++SizeEditGeneration;

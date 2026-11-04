@@ -2,6 +2,7 @@
 using System;
 using System.Collections;
 using System.IO;
+using System.Threading;
 using LingChatXR.Core;
 using LingChatXR.Chat;
 using Newtonsoft.Json.Linq;
@@ -81,6 +82,34 @@ namespace LingChatXR.Editor
             Check(!first.Result&&second.Result&&live.Ready,"连续重载只采纳最新请求");
             Check(live.Avatar.Instance!=instance&&!live.Interaction.PlaneConfirmed,"新模型生命周期不继承旧平台和实例");
             Check(live.Place(Vector3.zero),"取消旧加载后仍可正常放置");
+            var preservedInstance=live.Avatar.Instance;var preservedCore=live.Interaction;
+            using(var cancelled=new CancellationTokenSource())
+            {
+                cancelled.Cancel();var ignored=live.SwitchCharacterAsync("local-physics-reference",cancelled.Token);
+                while(!ignored.IsCompleted)yield return null;
+                Check(!ignored.Result&&live.Ready&&live.Avatar.Instance==preservedInstance&&live.Interaction==preservedCore&&preservedCore.PlaneConfirmed,"预先取消的切换不拆掉当前角色和平台");
+            }
+            string modelPreferences=Path.Combine(Path.GetDirectoryName(PreferenceFile),"xr-"+live.Avatar.Package.model.sha256+".json");
+            string previousModelPreferences=File.ReadAllText(modelPreferences);
+            File.WriteAllText(modelPreferences,"{interrupted-settings");
+            var withBrokenPreferences=live.SwitchCharacterAsync("local-physics-reference");
+            while(!withBrokenPreferences.IsCompleted)yield return null;
+            Check(withBrokenPreferences.Result&&live.Ready,"设置损坏时仍能载入模型");
+            Check(File.ReadAllText(modelPreferences)=="{interrupted-settings","损坏设置原件保留");
+            Check(live.SaveMovementSpeed(1.5f)!=null&&File.ReadAllText(modelPreferences)=="{interrupted-settings","不能以默认设置覆盖损坏原件");
+            File.WriteAllText(modelPreferences,previousModelPreferences);
+            var fixtureFolder="local-load-recovery-"+Guid.NewGuid().ToString("N");
+            var missing=live.SwitchCharacterAsync(fixtureFolder);while(!missing.IsCompleted)yield return null;
+            Check(!missing.Result&&!live.Ready&&live.LoadingPhase==FeiyuPreview.LoadPhase.Failed,"缺失角色明确失败且不遗留可交互旧模型");
+            var retryMissing=live.RetryCharacterLoadAsync();while(!retryMissing.IsCompleted)yield return null;
+            Check(!retryMissing.Result&&live.LoadingPhase==FeiyuPreview.LoadPhase.Failed,"重试仍指向失败目标而非悄悄换回上一个角色");
+            var fixturePath=Path.Combine(Application.streamingAssetsPath,"Characters",fixtureFolder);Directory.CreateDirectory(fixturePath);
+            var sourcePath=Path.Combine(Application.streamingAssetsPath,"Characters","local-physics-reference");
+            File.Copy(Path.Combine(sourcePath,"manifest.json"),Path.Combine(fixturePath,"manifest.json"));
+            File.Copy(Path.Combine(sourcePath,"model.vrm"),Path.Combine(fixturePath,"model.vrm"));
+            var repaired=live.RetryCharacterLoadAsync();while(!repaired.IsCompleted)yield return null;
+            Check(repaired.Result&&live.ActivePackageFolder==fixtureFolder,"补齐目标资源后同一重试入口恢复");
+            Check(File.ReadAllText(PreferenceFile)==originalPreferences,"失败恢复未改应用选择");
             var bad=Path.Combine(Output,"invalid-catalog");Directory.CreateDirectory(bad);
             File.WriteAllText(Path.Combine(bad,"index.json"),"{\"version\":1,\"folders\":[],\"startupOverride\":\"missing\"}");
             var invalid=CharacterCatalog.Load(bad,default);while(!invalid.IsCompleted)yield return null;
