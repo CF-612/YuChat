@@ -18,6 +18,22 @@ namespace LingChatXR.Editor
             var mapped=renderers.ToDictionary(r=>r,r=>r.sharedMaterials);
             var bridge=avatar.GetComponent<LilToonExpressionBridge>();
             var expression=avatar.Instance.Runtime.Expression;
+            if(System.Environment.GetEnvironmentVariable("XR_V21_FRONT_PHOTO")=="1")
+            {
+                foreach(var key in expression.ExpressionKeys)expression.SetWeight(key,0);
+                expression.SetWeight(ExpressionKey.CreateCustom("eyeCircleShock"),1);
+                avatar.Instance.Runtime.Process();
+                bridge.Synchronize();
+                // 固定同一姿态、同一帧与相机，仅切换整套实际材质实例。
+                V21ModelProbe.Capture(camera,Path.Combine(output,"front-shock-liltoon-synced.png"));
+                var alphas=new JArray();
+                foreach(var r in renderers)for(int i=0;i<originals[r].Length;i++)
+                    if(Selected(originals[r][i]))alphas.Add(new JObject{["name"]=originals[r][i].name,["sourceAlpha"]=originals[r][i].GetColor("_Color").a,["targetAlpha"]=mapped[r][i].GetColor("_Color").a});
+                foreach(var r in renderers)r.sharedMaterials=originals[r];
+                V21ModelProbe.Capture(camera,Path.Combine(output,"front-shock-mtoon.png"));
+                File.WriteAllText(Path.Combine(output,"front-photo.json"),new JObject{["frame"]=Time.frameCount,["cameraPosition"]=camera.transform.position.ToString("F5"),["cameraRotation"]=camera.transform.rotation.ToString("F5"),["orthographicSize"]=camera.orthographicSize,["samePoseSameFrame"]=true,["explicitSyncBeforeCapture"]=true,["alphas"]=alphas}.ToString());
+                yield break;
+            }
             var rows=new JArray();
             foreach(string mode in new[]{"A-auto","A-sync","B-original"})
             {
