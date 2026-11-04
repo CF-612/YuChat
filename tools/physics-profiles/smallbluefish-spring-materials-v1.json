@@ -1,0 +1,89 @@
+{
+  "bindings": [
+    {
+      "material": "cloth",
+      "root": "skirt00",
+      "spring": 0
+    },
+    {
+      "material": "cloth",
+      "root": "skirt01",
+      "spring": 1
+    },
+    {
+      "material": "cloth",
+      "root": "skirt02",
+      "spring": 2
+    },
+    {
+      "material": "cloth",
+      "root": "skirt03",
+      "spring": 3
+    },
+    {
+      "material": "cloth",
+      "root": "skirt04",
+      "spring": 4
+    },
+    {
+      "material": "cloth",
+      "root": "skirt05",
+      "spring": 5
+    },
+    {
+      "material": "cloth",
+      "root": "skirt06",
+      "spring": 6
+    },
+    {
+      "material": "cloth",
+      "root": "skirt07",
+      "spring": 7
+    },
+    {
+      "material": "hair",
+      "root": "HairBackL_0",
+      "spring": 9
+    },
+    {
+      "material": "hair",
+      "root": "HairBackR_0",
+      "spring": 10
+    },
+    {
+      "material": "hair",
+      "root": "HairBackC_0",
+      "spring": 11
+    },
+    {
+      "material": "hair",
+      "root": "HairSideL_0",
+      "spring": 12
+    },
+    {
+      "material": "hair",
+      "root": "HairSideR_0",
+      "spring": 13
+    }
+  ],
+  "materials": [
+    {
+      "id": "cloth",
+      "drag": 0.7,
+      "tipAngle": 100,
+      "rootAngle": 70,
+      "tipStiffness": 0.45,
+      "rootStiffness": 1.4,
+      "gravity": 1.6
+    },
+    {
+      "id": "hair",
+      "drag": 0.72,
+      "tipAngle": 35,
+      "rootAngle": 25,
+      "tipStiffness": 2,
+      "rootStiffness": 3,
+      "gravity": 0.35
+    }
+  ]
+}

@@ -14,6 +14,9 @@ namespace LingChatXR
         Vrm10Instance instance;
         readonly Dictionary<Transform,BlittableJointMutable> source=new Dictionary<Transform,BlittableJointMutable>();
         readonly Dictionary<Transform,BlittableJointMutable> materials=new Dictionary<Transform,BlittableJointMutable>();
+        readonly Dictionary<VRM10SpringBoneCollider,(Vector3 offset,float radius)> colliderSource=new Dictionary<VRM10SpringBoneCollider,(Vector3,float)>();
+        readonly List<VRM10SpringBoneColliderGroup[]> groupSource=new List<VRM10SpringBoneColliderGroup[]>();
+        public int ColliderRebuildCount { get; private set; }
         public int ConfiguredJointCount => materials.Count;
         FastSpringBoneCombinedBuffer configured;
         bool resetPending=true, paused;
@@ -51,12 +54,16 @@ namespace LingChatXR
             CaptureStructuralScale();
             foreach(var spring in value.SpringBone.Springs)
                 foreach(var joint in spring.Joints)source[joint.transform]=joint.Blittable;
+            foreach(var group in value.SpringBone.ColliderGroups)
+                foreach(var collider in group.Colliders)if(collider!=null)colliderSource[collider]=(collider.Offset,collider.Radius);
+            foreach(var spring in value.SpringBone.Springs)groupSource.Add(spring.ColliderGroups.ToArray());
             ConfigureMaterials(configuration);
         }
         // 映射完全来自角色包；运行时不根据角色身份、骨名关键词猜部件类型。
         public void ConfigureMaterials(SpringPhysicsConfiguration configuration)
         {
             materials.Clear();configured=null;
+            ConfigureColliders(configuration);
             if(configuration?.bindings==null||configuration.materials==null)return;
             foreach(var binding in configuration.bindings)
             {
@@ -76,6 +83,41 @@ namespace LingChatXR
                         authored?b.anglelimit1:Mathf.Lerp(material.rootAngle,material.tipAngle,t)*Mathf.Deg2Rad,b.anglelimit2,b.anglelimitOffset);
                 }
             }
+        }
+        // 只应用明确的角色包校准；加载/切换配置时重建一次，不在逐帧更新里改碰撞结构。
+        void ConfigureColliders(SpringPhysicsConfiguration configuration)
+        {
+            bool changed=false;
+            var desired=new Dictionary<VRM10SpringBoneCollider,(Vector3 offset,float radius)>(colliderSource);
+            if(configuration?.colliders!=null)foreach(var entry in configuration.colliders)
+            {
+                if(entry==null||entry.group<0||entry.group>=instance.SpringBone.ColliderGroups.Count)continue;
+                var group=instance.SpringBone.ColliderGroups[entry.group];
+                if(entry.index<0||entry.index>=group.Colliders.Count)continue;
+                var collider=group.Colliders[entry.index];
+                if(collider==null||collider.transform.name!=entry.node||!float.IsFinite(entry.offset.sqrMagnitude)||
+                    !float.IsFinite(entry.radius)||entry.radius<=0||entry.radius>1)
+                {Debug.LogWarning("碰撞校准无效，保留作者配置："+entry.node);continue;}
+                desired[collider]=(entry.offset,entry.radius);
+            }
+            foreach(var pair in desired)
+            {
+                var c=pair.Key;var v=pair.Value;
+                if(c.Offset!=v.offset||!Mathf.Approximately(c.Radius,v.radius)){c.Offset=v.offset;c.Radius=v.radius;changed=true;}
+            }
+            for(int i=0;i<instance.SpringBone.Springs.Count;i++)
+            {
+                var groups=new List<VRM10SpringBoneColliderGroup>(groupSource[i]);
+                if(configuration?.bindings!=null)foreach(var binding in configuration.bindings)
+                {
+                    var spring=instance.SpringBone.Springs[i];
+                    if(binding==null||binding.spring!=i||spring.Joints.Count==0||spring.Joints[0].transform.name!=binding.root||binding.extraColliderGroups==null)continue;
+                    foreach(int index in binding.extraColliderGroups)if(index>=0&&index<instance.SpringBone.ColliderGroups.Count&&!groups.Contains(instance.SpringBone.ColliderGroups[index]))groups.Add(instance.SpringBone.ColliderGroups[index]);
+                }
+                var current=instance.SpringBone.Springs[i].ColliderGroups;
+                if(current.Count!=groups.Count||!System.Linq.Enumerable.SequenceEqual(current,groups)){current.Clear();current.AddRange(groups);changed=true;}
+            }
+            if(changed){instance.Runtime.SpringBone.ReconstructSpringBone();ColliderRebuildCount++;resetPending=true;}
         }
         public void RequestReset() {resetPending=true;hasPosition=false;MotionAirForce=Vector3.zero;}
         public void SetPaused(bool value)

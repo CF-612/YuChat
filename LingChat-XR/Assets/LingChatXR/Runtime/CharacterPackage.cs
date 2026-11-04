@@ -22,11 +22,20 @@ namespace LingChatXR
     {
         public SpringPhysicsMaterial[] materials;
         public SpringPhysicsBinding[] bindings;
+        public SpringColliderAdjustment[] colliders;
+    }
+    [Serializable] public sealed class SpringColliderAdjustment
+    {
+        public int group, index;
+        public string node;
+        public Vector3 offset;
+        public float radius;
     }
     [Serializable] public sealed class SpringPhysicsBinding
     {
         public int spring;
         public string root, material;
+        public int[] extraColliderGroups;
     }
     [Serializable] public sealed class SpringPhysicsMaterial
     {

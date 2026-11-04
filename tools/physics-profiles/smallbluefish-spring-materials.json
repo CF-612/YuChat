@@ -3,42 +3,66 @@
     {
       "material": "cloth",
       "root": "skirt00",
-      "spring": 0
+      "spring": 0,
+      "extraColliderGroups": [
+        1
+      ]
     },
     {
       "material": "cloth",
       "root": "skirt01",
-      "spring": 1
+      "spring": 1,
+      "extraColliderGroups": [
+        1
+      ]
     },
     {
       "material": "cloth",
       "root": "skirt02",
-      "spring": 2
+      "spring": 2,
+      "extraColliderGroups": [
+        1
+      ]
     },
     {
       "material": "cloth",
       "root": "skirt03",
-      "spring": 3
+      "spring": 3,
+      "extraColliderGroups": [
+        1
+      ]
     },
     {
       "material": "cloth",
       "root": "skirt04",
-      "spring": 4
+      "spring": 4,
+      "extraColliderGroups": [
+        1
+      ]
     },
     {
       "material": "cloth",
       "root": "skirt05",
-      "spring": 5
+      "spring": 5,
+      "extraColliderGroups": [
+        1
+      ]
     },
     {
       "material": "cloth",
       "root": "skirt06",
-      "spring": 6
+      "spring": 6,
+      "extraColliderGroups": [
+        1
+      ]
     },
     {
       "material": "cloth",
       "root": "skirt07",
-      "spring": 7
+      "spring": 7,
+      "extraColliderGroups": [
+        1
+      ]
     },
     {
       "material": "hair",
@@ -84,6 +108,96 @@
       "tipStiffness": 2,
       "rootStiffness": 3,
       "gravity": 0.35
+    }
+  ],
+  "colliders": [
+    {
+      "node": "hips",
+      "offset": {
+        "z": 0,
+        "x": 0,
+        "y": 0.05
+      },
+      "group": 0,
+      "radius": 0.14,
+      "index": 0
+    },
+    {
+      "node": "leftUpperLeg",
+      "offset": {
+        "z": 0,
+        "x": 0,
+        "y": 0
+      },
+      "group": 0,
+      "radius": 0.0585,
+      "index": 1
+    },
+    {
+      "node": "rightUpperLeg",
+      "offset": {
+        "z": 0,
+        "x": 0,
+        "y": 0
+      },
+      "group": 0,
+      "radius": 0.0585,
+      "index": 2
+    },
+    {
+      "node": "head",
+      "offset": {
+        "z": 0,
+        "x": 0,
+        "y": 0.12
+      },
+      "group": 1,
+      "radius": 0.22,
+      "index": 0
+    },
+    {
+      "node": "neck",
+      "offset": {
+        "z": 0,
+        "x": 0,
+        "y": 0
+      },
+      "group": 1,
+      "radius": 0.075,
+      "index": 1
+    },
+    {
+      "node": "chest",
+      "offset": {
+        "z": 0,
+        "x": 0,
+        "y": 0
+      },
+      "group": 1,
+      "radius": 0.095,
+      "index": 2
+    },
+    {
+      "node": "head",
+      "offset": {
+        "z": 0,
+        "x": 0,
+        "y": 0.12
+      },
+      "group": 1,
+      "radius": 0.1,
+      "index": 3
+    },
+    {
+      "node": "head",
+      "offset": {
+        "z": 0,
+        "x": 0,
+        "y": 0.12
+      },
+      "group": 1,
+      "radius": 0.1,
+      "index": 4
     }
   ]
 }
