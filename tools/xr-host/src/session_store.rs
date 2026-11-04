@@ -92,9 +92,10 @@ impl SessionStore {
         } else {
             let (complete,incomplete)=scan_records(&path,|r| {
                 let s=sessions.entry(r.id.clone()).or_insert_with(||Session::empty(r.id.clone(),r.role_id.clone()));
-                anyhow::ensure!(s.role_id==r.role_id&&s.history_end()==r.history_from&&s.sentences.len()==r.sentences_from,"Session journal sequence mismatch");
+                anyhow::ensure!(s.role_id==r.role_id&&s.history_end()==r.history_from&&s.sentences_end()==r.sentences_from,"Session journal sequence mismatch");
                 s.generation=r.generation;s.history.extend(r.history);s.sentences.extend(r.sentences);
                 s.trim_saved_history(s.history_end());
+                s.trim_saved_sentences(s.sentences_end());
                 Ok(())
             })?;
             if incomplete {
@@ -104,8 +105,8 @@ impl SessionStore {
                 let file=OpenOptions::new().write(true).open(&path)?;file.set_len(complete)?;file.sync_all()?;
             }
         }
-        let cursors=sessions.iter().map(|(id,s)|(id.clone(),(s.history_end(),s.sentences.len()))).collect();
-        for s in sessions.values_mut(){s.trim_saved_history(s.history_end());}
+        let cursors=sessions.iter().map(|(id,s)|(id.clone(),(s.history_end(),s.sentences_end()))).collect();
+        for s in sessions.values_mut(){s.trim_saved_history(s.history_end());s.trim_saved_sentences(s.sentences_end());}
         Ok((Self{path,cursors:Arc::new(Mutex::new(cursors))},sessions))
     }
     pub async fn history_page(&self,id:&str,before:usize,limit:usize,sessions:&Mutex<HashMap<String,Session>>)->anyhow::Result<(usize,Vec<History>)> {
@@ -133,8 +134,8 @@ impl SessionStore {
         let record={
             let all=sessions.lock().await;
             let s=all.get(id).ok_or_else(||anyhow::anyhow!("Session missing"))?;
-            anyhow::ensure!(h>=s.history_base&&h<=s.history_end()&&n<=s.sentences.len(),"Session history was truncated");
-            Record{version:1,id:s.id.clone(),role_id:s.role_id.clone(),generation:s.generation,history_from:h,sentences_from:n,history:s.history[h-s.history_base..].to_vec(),sentences:s.sentences[n..].to_vec()}
+            anyhow::ensure!(h>=s.history_base&&h<=s.history_end()&&n>=s.sentences_base&&n<=s.sentences_end(),"Session history was truncated");
+            Record{version:1,id:s.id.clone(),role_id:s.role_id.clone(),generation:s.generation,history_from:h,sentences_from:n,history:s.history[h-s.history_base..].to_vec(),sentences:s.sentences[n-s.sentences_base..].to_vec()}
         };
         let next=(h+record.history.len(),n+record.sentences.len());
         let path=self.path.clone();
@@ -149,8 +150,24 @@ impl SessionStore {
             // 等待者取消也不能提前释放写入顺序或丢失已经落盘的游标。
             cursors.insert(saved_id,next);Ok(())
         }).await??;
-        if let Some(s)=sessions.lock().await.get_mut(id){s.trim_saved_history(next.0);}
+        if let Some(s)=sessions.lock().await.get_mut(id){s.trim_saved_history(next.0);s.trim_saved_sentences(next.1);}
         Ok(())
+    }
+    pub async fn find_sentence(&self,id:&str,turn:&str,index:usize,sessions:&Mutex<HashMap<String,Session>>)->anyhow::Result<Option<Sentence>> {
+        let writer=self.cursors.clone().lock_owned().await;
+        {
+            let all=sessions.lock().await;let s=all.get(id).ok_or_else(||anyhow::anyhow!("Session missing"))?;
+            if let Some(row)=s.sentences.iter().find(|x|x.turn_id==turn&&x.index==index){return Ok(Some(row.clone()));}
+            if s.sentences_base==0{return Ok(None);}
+        }
+        let path=self.path.clone();let id=id.to_owned();let turn=turn.to_owned();
+        tokio::task::spawn_blocking(move || {
+            let _writer=writer;let mut found=None;
+            let (_,incomplete)=scan_records(&path,|r| {
+                if r.id==id&&found.is_none(){found=r.sentences.into_iter().find(|s|s.turn_id==turn&&s.index==index);}Ok(())
+            })?;
+            anyhow::ensure!(!incomplete,"Incomplete sentence journal");Ok(found)
+        }).await?
     }
 }
 
@@ -158,6 +175,33 @@ impl SessionStore {
 mod tests {
     use super::*;
     fn root()->PathBuf {std::env::temp_dir().join(format!("xr-store-{}",uuid::Uuid::new_v4()))}
+    #[tokio::test]
+    async fn sentence_cache_preserves_current_turn_and_recovers_old_rows_from_disk() {
+        let root=root();let (store,_)=SessionStore::open(&root).unwrap();
+        let mut s=Session::empty("s".into(),"feiyu".into());
+        s.sentences=(0..1000).map(|i|Sentence{turn_id:format!("turn-{i}"),index:7,message:format!("正文 {i}"),audio_file:format!("{i}.wav"),..Default::default()}).collect();
+        let sessions=Mutex::new(HashMap::from([("s".into(),s)]));
+        store.save("s",&sessions).await.unwrap();
+        assert_eq!(sessions.lock().await["s"].sentences.len(),100);
+        for i in [0,899,900,999] {
+            let row=store.find_sentence("s",&format!("turn-{i}"),7,&sessions).await.unwrap().unwrap();
+            assert_eq!(row.message,format!("正文 {i}"));assert_eq!(row.audio_file,format!("{i}.wav"));
+        }
+        assert!(store.find_sentence("s","turn-0",0,&sessions).await.unwrap().is_none());
+        {
+            let mut all=sessions.lock().await;let s=all.get_mut("s").unwrap();
+            s.sentences.extend((0..150).map(|index|Sentence{turn_id:"active".into(),index,..Default::default()}));
+            s.trim_saved_sentences(1000);
+            assert_eq!(s.sentences.len(),150);assert_eq!(s.sentences_base,1000);
+        }
+        store.save("s",&sessions).await.unwrap();
+        let (reopened,all)=SessionStore::open(&root).unwrap();
+        assert_eq!(all["s"].sentences_end(),1150);assert_eq!(all["s"].sentences.len(),150);
+        assert_eq!(reopened.find_sentence("s","turn-0",7,&Mutex::new(all)).await.unwrap().unwrap().audio_file,"0.wav");
+        let output=root.join("export.json");SessionStore::export_legacy(&root,&output).unwrap();
+        let exported:HashMap<String,Session>=serde_json::from_slice(&fs::read(output).unwrap()).unwrap();
+        assert_eq!(exported["s"].sentences.len(),1150);assert_eq!(exported["s"].sentences[1149].index,149);
+    }
     #[tokio::test]
     async fn audio_inventory_counts_unique_references_without_deleting_files() {
         let root=root();let (store,_)=SessionStore::open(&root).unwrap();fs::create_dir(root.join("audio")).unwrap();

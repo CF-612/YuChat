@@ -24,7 +24,7 @@ async fn fixture(replies:Vec<&str>,voice:Arc<VoiceFixture>)->Shared {
     let client=Arc::new(LlmClient::new(config,reqwest::Client::new(),Box::new(TextFixture{replies:std::sync::Mutex::new(replies.into_iter().map(String::from).collect())})));
     let root=std::env::temp_dir().join(format!("xr-host-test-{}",Uuid::new_v4()));tokio::fs::create_dir_all(root.join("audio")).await.unwrap();
     let mut sessions=HashMap::new();
-    for role in ["feiyu","ling-demo"] {sessions.insert(role.into(),Session{id:role.into(),role_id:role.into(),generation:1,history:vec![],history_base:0,sentences:vec![],events:vec![],cancel:None,busy:true});}
+    for role in ["feiyu","ling-demo"] {sessions.insert(role.into(),Session{id:role.into(),role_id:role.into(),generation:1,history:vec![],history_base:0,sentences:vec![],sentences_base:0,events:vec![],cancel:None,busy:true});}
     Arc::new(Host{store:crate::session_store::SessionStore::open(&root).unwrap().0,voice_queue:Default::default(),token:"fixture-only".into(),root,llm:RwLock::new(client.clone()),settings_path:None,translator:Translator::new(Arc::new(RwLock::new(Some(client))),true),voice,sessions:Mutex::new(sessions)})
 }
 fn request()->Turn {Turn{voice_mode:String::new(),session_id:"feiyu".into(),text:"".into(),retry_turn:"".into(),retry_index:0,test_voice:false,director:false,available:vec![],style:"normal".into(),previous_pose:String::new()}}

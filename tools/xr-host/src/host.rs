@@ -16,10 +16,17 @@ pub struct History { pub speaker:String, pub text:String }
 pub struct Event { pub cursor:usize, pub session_id:String, pub role_id:String, pub turn_id:String, pub generation:u64, #[serde(default)] pub sentence_end_exclusive:usize, pub index:usize, pub kind:String, pub message:String, pub audio_file:String, pub emotion:String, pub motion:String, #[serde(default)] pub stage_action:Option<crate::stage_action::Decision>, #[serde(default)] pub stage_request_id:String }
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all="camelCase")]
-pub struct Session { pub id:String, pub role_id:String, pub generation:u64, pub history:Vec<History>, #[serde(skip)] pub history_base:usize, pub sentences:Vec<Sentence>, #[serde(skip)] pub events:Vec<Event>, #[serde(skip)] pub busy:bool, #[serde(skip)] cancel:Option<tokio::sync::oneshot::Sender<()>> }
+pub struct Session { pub id:String, pub role_id:String, pub generation:u64, pub history:Vec<History>, #[serde(skip)] pub history_base:usize, pub sentences:Vec<Sentence>, #[serde(skip)] pub sentences_base:usize, #[serde(skip)] pub events:Vec<Event>, #[serde(skip)] pub busy:bool, #[serde(skip)] cancel:Option<tokio::sync::oneshot::Sender<()>> }
 impl Session {
-    pub fn empty(id:String,role_id:String)->Self {Self{id,role_id,generation:0,history:vec![],history_base:0,sentences:vec![],events:vec![],busy:false,cancel:None}}
+    pub fn empty(id:String,role_id:String)->Self {Self{id,role_id,generation:0,history:vec![],history_base:0,sentences:vec![],sentences_base:0,events:vec![],busy:false,cancel:None}}
     pub fn history_end(&self)->usize {self.history_base+self.history.len()}
+    pub fn sentences_end(&self)->usize {self.sentences_base+self.sentences.len()}
+    pub fn trim_saved_sentences(&mut self,saved:usize) {
+        // 当前最后一轮完整保留，streamEnd 和活动轮恢复不能被缓存裁剪破坏。
+        let last_start=self.sentences.last().map(|last|self.sentences.iter().rposition(|s|s.turn_id!=last.turn_id).map_or(0,|i|i+1)).unwrap_or(0);
+        let remove=self.sentences.len().saturating_sub(100).min(last_start).min(saved.saturating_sub(self.sentences_base));
+        self.sentences.drain(..remove);self.sentences_base+=remove;
+    }
     pub fn trim_saved_history(&mut self,saved:usize) {
         let remove=self.history.len().saturating_sub(100).min(saved.saturating_sub(self.history_base));
         self.history.drain(..remove);self.history_base+=remove;
@@ -81,10 +88,11 @@ pub async fn turn(State(h):State<Shared>,headers:HeaderMap,Json(req):Json<Turn>)
     if !["", "tts", "clips", "muted"].contains(&req.voice_mode.as_str()) { return Err((StatusCode::BAD_REQUEST,"Invalid voice mode")); }
     if !crate::stage_action::valid_candidates(&req.available){return Err((StatusCode::BAD_REQUEST,"Invalid motion capabilities"));}
     if req.text.chars().count()>2000 || (req.text.trim().is_empty() && req.retry_turn.is_empty() && !req.test_voice){return Err((StatusCode::BAD_REQUEST,"Empty or oversized input"));}
+    let observed_generation={let all=h.sessions.lock().await;let s=all.get(&req.session_id).ok_or((StatusCode::NOT_FOUND,"Session missing"))?;if s.busy{return Err((StatusCode::CONFLICT,"Session busy"));}s.generation};
+    let retry=if !req.retry_turn.is_empty(){Some(h.store.find_sentence(&req.session_id,&req.retry_turn,req.retry_index,&h.sessions).await.map_err(|_|(StatusCode::INTERNAL_SERVER_ERROR,"Sentence read failed"))?.ok_or((StatusCode::NOT_FOUND,"Sentence missing"))?)}else{None};
     let mut all=h.sessions.lock().await;
     let s=all.get_mut(&req.session_id).ok_or((StatusCode::NOT_FOUND,"Session missing"))?;
-    if s.busy {return Err((StatusCode::CONFLICT,"Session busy"));}
-    let retry=if !req.retry_turn.is_empty(){Some(s.sentences.iter().find(|x|x.turn_id==req.retry_turn&&x.index==req.retry_index).cloned().ok_or((StatusCode::NOT_FOUND,"Sentence missing"))?)}else{None};
+    if s.busy||s.generation!=observed_generation {return Err((StatusCode::CONFLICT,"Session changed"));}
     s.generation+=1; s.busy=true;
     let g=s.generation; let id=s.id.clone(); let role=s.role_id.clone(); let history=s.history[s.history.len().saturating_sub(30)..].to_vec();
     let turn=Uuid::new_v4().to_string();
