@@ -25,9 +25,24 @@ async fn fixture(replies:Vec<&str>,voice:Arc<VoiceFixture>)->Shared {
     let root=std::env::temp_dir().join(format!("xr-host-test-{}",Uuid::new_v4()));tokio::fs::create_dir_all(root.join("audio")).await.unwrap();
     let mut sessions=HashMap::new();
     for role in ["feiyu","ling-demo"] {sessions.insert(role.into(),Session{id:role.into(),role_id:role.into(),generation:1,history:vec![],history_base:0,sentences:vec![],sentences_base:0,recovery:None,events:vec![],cancel:None,busy:true});}
-    Arc::new(Host{store:crate::session_store::SessionStore::open(&root).unwrap().0,voice_queue:Default::default(),token:"fixture-only".into(),root,llm:RwLock::new(client.clone()),settings_path:None,translator:Translator::new(Arc::new(RwLock::new(Some(client))),true),voice,sessions:Mutex::new(sessions)})
+    Arc::new(Host{roles:Default::default(),store:crate::session_store::SessionStore::open(&root).unwrap().0,voice_queue:Default::default(),token:"fixture-only".into(),root,llm:RwLock::new(client.clone()),settings_path:None,translator:Translator::new(Arc::new(RwLock::new(Some(client))),true),voice,sessions:Mutex::new(sessions)})
 }
 fn request()->Turn {Turn{voice_mode:String::new(),session_id:"feiyu".into(),text:"".into(),retry_turn:"".into(),retry_index:0,test_voice:false,director:false,available:vec![],style:"normal".into(),previous_pose:String::new()}}
+
+#[tokio::test] async fn role_catalog_opens_configured_identity_without_changing_existing_history(){
+    let mut h=fixture(vec![],Arc::new(VoiceFixture{calls:AtomicUsize::new(0),fail_first:false,gate:None})).await;
+    let mut config:Value=serde_json::from_str(include_str!("../roles.default.json")).unwrap();
+    let mut role=config["roles"][0].clone();role["id"]=json!("third");config["roles"].as_array_mut().unwrap().push(role);
+    Arc::get_mut(&mut h).unwrap().roles=crate::role_catalog::RoleCatalog::parse(&config.to_string()).unwrap();
+    let mut headers=HeaderMap::new();headers.insert("authorization","Bearer fixture-only".parse().unwrap());
+    assert_eq!(catalog(State(h.clone()),HeaderMap::new()).await.unwrap_err().0,StatusCode::UNAUTHORIZED);
+    assert_eq!(catalog(State(h.clone()),headers.clone()).await.unwrap().0["roles"].as_array().unwrap().len(),3);
+    let opened=open(State(h.clone()),headers.clone(),Json(Open{role_id:"third".into(),history_limit:None})).await.unwrap().0;
+    assert_eq!(opened["roleId"],"third");assert_ne!(opened["sessionId"],"feiyu");
+    assert_eq!(open(State(h.clone()),headers.clone(),Json(Open{role_id:"third".into(),history_limit:None})).await.unwrap().0["sessionId"],opened["sessionId"]);
+    assert_eq!(open(State(h.clone()),headers,Json(Open{role_id:"missing".into(),history_limit:None})).await.unwrap_err().0,StatusCode::BAD_REQUEST);
+    assert!(h.sessions.lock().await.contains_key("feiyu"));
+}
 
 struct DirectorFixture { gate:Arc<Notify>, calls:Arc<AtomicUsize> }
 #[async_trait] impl LlmProvider for DirectorFixture {

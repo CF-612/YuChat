@@ -21,7 +21,7 @@ async fn pair(State(s):State<Shared>,headers:HeaderMap,Json(p):Json<Pair>)->Resp
     a.1=true;Json(serde_json::json!({"token":s.token})).into_response()
 }
 fn allowed(method:&str,path:&str)->bool {
-    match (method,path){("GET","/health"|"/history"|"/events"|"/snapshot"|"/asr")|("POST","/session"|"/turn"|"/stop"|"/asr")=>true,
+    match (method,path){("GET","/health"|"/history"|"/events"|"/snapshot"|"/catalog"|"/asr")|("POST","/session"|"/turn"|"/stop"|"/asr")=>true,
     ("GET",p)=>p.strip_prefix("/audio/").and_then(|p|p.strip_suffix(".wav")).is_some_and(|p|Uuid::parse_str(p).is_ok()),_=>false}
 }
 async fn forward(State(s):State<Shared>,req:Request)->Response {

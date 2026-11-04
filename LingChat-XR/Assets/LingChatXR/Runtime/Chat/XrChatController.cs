@@ -114,7 +114,7 @@ namespace LingChatXR.Chat
             var p=new DialoguePreferences();
             try{p=PreferenceFiles.Load<DialoguePreferences>(PreferencesPath);}catch(Exception e)when(PreferenceFiles.IsStorageError(e)){Status="偏好文件无法读取，原文件已保留";}
             ApplyDialogue(p);
-            Role=p.role=="ling-demo"?"ling-demo":"feiyu";
+            Role=DialogueCatalog.ValidId(p.role)?p.role:"feiyu";
         }
         public DialoguePreferences ReadDialogue() => new DialoguePreferences{voiceMode=VoiceMode.ToString().ToLowerInvariant(),voice=Voice.Volume,effects=Effects.Volume,effectEnabled=Effects.Enabled,auto=AutoAdvance,speed=TextSpeed,role=Role};
         public bool SaveDialogue(DialoguePreferences value,out string error)
@@ -122,7 +122,7 @@ namespace LingChatXR.Chat
             error=null;
             if(value==null||!float.IsFinite(value.voice)||value.voice<0||value.voice>1||!float.IsFinite(value.effects)||value.effects<0||value.effects>1||value.speed<1||value.speed>100){error="音量需为 0–100%，出字速度需为 1–100";return false;}
             if(value.voiceMode!="clips" && value.voiceMode!="muted" && value.voiceMode!="tts"){error="声音模式无效";return false;}
-            if(value.role!="feiyu"&&value.role!="ling-demo"){error="该对话角色尚未接入";return false;}
+            if(!DialogueCatalog.ValidId(value.role)||(value.role!=Role&&!AvailableRoles.Any(r=>r.id==value.role))){error="该对话角色尚未接入";return false;}
             if(value.role!=Role&&(Busy||Stopping||connecting)){error="请等待当前对话或连接结束后切换角色";return false;}
             try
             {
@@ -246,6 +246,10 @@ namespace LingChatXR.Chat
             catch(IOException){connectionFailure="无法读取本地连接文件 · 检查文件权限后重试";}
             catch(UnauthorizedAccessException){connectionFailure="本地连接文件无读取权限 · 检查权限后重试";}
             if(connectionFailure!=null){Status=connectionFailure;Connected=false;Notify();yield break;}
+            yield return FetchCatalog(token);
+            if(token!=epoch)yield break;
+            if(!catalogReady){Connected=false;Notify();yield break;}
+            if(!AvailableRoles.Any(r=>r.id==role)){Status="已选角色未在此服务注册 · 请在设置中选择角色";Connected=false;Notify();yield break;}
             using (var scope = Request("/session", JsonUtility.ToJson(new OpenRequest { roleId = role })))
             {
                 var request=scope.Value;
@@ -255,7 +259,7 @@ namespace LingChatXR.Chat
                 var reply = JsonUtility.FromJson<SessionReply>(request.downloadHandler.text);
                 session = reply.sessionId; Role = reply.roleId; cursor = reply.cursor;historyBefore=reply.historyBefore;
                 history.Clear(); if (reply.history != null) history.AddRange(reply.history);
-                Connected = true; Status = "已连接 · 本地日语声线"; Notify();
+                Connected = true; Status = "已连接 · "+VoiceLabel; Notify();
                 StartCoroutine(RefreshAsrAvailability());
                 if (polling != null) StopCoroutine(polling);
                 polling = StartCoroutine(Poll());

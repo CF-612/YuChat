@@ -4,6 +4,7 @@ mod utils;
 mod host;
 mod session_store;
 mod recovery;
+mod role_catalog;
 mod settings;
 mod stage_action;
 mod gateway;
@@ -63,11 +64,11 @@ async fn main()->anyhow::Result<()> {
     let token=uuid::Uuid::new_v4().to_string();
     let asr_settings=std::env::var("XR_ASR_SETTINGS").map(PathBuf::from).unwrap_or_else(|_|settings.clone());
     let asr_routes=asr::router(token.clone(), &asr_settings);
-    let h=Arc::new(host::Host{store,voice_queue:Default::default(),token:token.clone(),root:root.clone(),llm,translator,voice,settings_path:Some(settings),sessions:Mutex::new(sessions)});
+    let h=Arc::new(host::Host{roles:role_catalog::RoleCatalog::load(&root)?,store,voice_queue:Default::default(),token:token.clone(),root:root.clone(),llm,translator,voice,settings_path:Some(settings),sessions:Mutex::new(sessions)});
     let port:u16=std::env::var("XR_HOST_PORT").unwrap_or_else(|_|"17861".into()).parse()?;
     let listener=tokio::net::TcpListener::bind(("127.0.0.1",port)).await?;
     std::fs::write(root.parent().unwrap().join("xr-host-connection.json"),serde_json::to_vec(&json!({"endpoint":format!("http://127.0.0.1:{port}"),"token":token}))?)?;
-    let app=Router::new().route("/health",get(host::health)).route("/playtest/direct",post(host::playtest)).route("/reload-settings",post(host::reload_settings)).route("/session",post(host::open)).route("/history",get(host::history_page)).route("/turn",post(host::turn)).route("/stop",post(host::stop)).route("/events",get(host::events)).route("/snapshot",get(host::snapshot)).route("/audio/:id",get(host::audio)).layer(axum::extract::DefaultBodyLimit::max(16384)).with_state(h);
+    let app=Router::new().route("/health",get(host::health)).route("/catalog",get(host::catalog)).route("/playtest/direct",post(host::playtest)).route("/reload-settings",post(host::reload_settings)).route("/session",post(host::open)).route("/history",get(host::history_page)).route("/turn",post(host::turn)).route("/stop",post(host::stop)).route("/events",get(host::events)).route("/snapshot",get(host::snapshot)).route("/audio/:id",get(host::audio)).layer(axum::extract::DefaultBodyLimit::max(16384)).with_state(h);
     println!("XR_HOST_READY loopback={port} voice=ling-v2 (PC required)");
     axum::serve(listener,app.merge(asr_routes)).await?;Ok(())
 }

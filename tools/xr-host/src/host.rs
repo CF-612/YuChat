@@ -36,7 +36,7 @@ pub struct VoiceQueue { slots:Arc<tokio::sync::Semaphore>, engine:Mutex<()> }
 impl Default for VoiceQueue {
     fn default()->Self {Self{slots:Arc::new(tokio::sync::Semaphore::new(8)),engine:Mutex::new(())}}
 }
-pub struct Host { pub store:crate::session_store::SessionStore, pub voice_queue:VoiceQueue, pub token:String, pub root:PathBuf, pub llm:RwLock<Arc<LlmClient>>, pub settings_path:Option<PathBuf>, pub translator:Translator, pub voice:Arc<dyn TtsAdapter>, pub sessions:Mutex<HashMap<String,Session>> }
+pub struct Host { pub roles:crate::role_catalog::RoleCatalog, pub store:crate::session_store::SessionStore, pub voice_queue:VoiceQueue, pub token:String, pub root:PathBuf, pub llm:RwLock<Arc<LlmClient>>, pub settings_path:Option<PathBuf>, pub translator:Translator, pub voice:Arc<dyn TtsAdapter>, pub sessions:Mutex<HashMap<String,Session>> }
 pub type Shared = Arc<Host>;
 type ApiResult = Result<Json<Value>,(StatusCode,&'static str)>;
 pub fn auth(h:&Host,headers:&HeaderMap)->Result<(),(StatusCode,&'static str)> {
@@ -64,9 +64,10 @@ impl Host {
 }
 #[derive(Deserialize)] #[serde(rename_all="camelCase")]
 pub struct Open {role_id:String, history_limit:Option<usize>}
+pub async fn catalog(State(h):State<Shared>,headers:HeaderMap)->ApiResult {auth(&h,&headers)?;Ok(Json(h.roles.public()))}
 pub async fn open(State(h):State<Shared>,headers:HeaderMap,Json(req):Json<Open>)->ApiResult {
     auth(&h,&headers)?;
-    if req.role_id!="feiyu" && req.role_id!="ling-demo" {return Err((StatusCode::BAD_REQUEST,"Unknown role"));}
+    if h.roles.get(&req.role_id).is_none() {return Err((StatusCode::BAD_REQUEST,"Unknown role"));}
     let mut all=h.sessions.lock().await;
     let id=all.values().find(|s|s.role_id==req.role_id).map(|s|s.id.clone()).unwrap_or_else(||Uuid::new_v4().to_string());
     let s=all.entry(id.clone()).or_insert_with(||Session::empty(id,req.role_id));
@@ -177,9 +178,10 @@ async fn run(h:Shared,id:String,g:u64,turn:String,role:String,history:Vec<Histor
     if req.test_voice {let mut s=Sentence{message:"你好，我是小肥鱼。很高兴见到你。".into(),tts_text:"こんにちは。会えてうれしいです。".into(),emotion:"开心".into(),..Default::default()};deliver(&h,&id,g,&turn,&mut s,false,skip_voice).await;return;}
     {
         h.event(&id,g,&turn,0,"thinking","思考中","").await;
-        let name=if role=="feiyu"{"小肥鱼"}else{"钦灵（测试会话）"};
+        let Some(profile)=h.roles.get(&role) else {h.event(&id,g,&turn,0,"error","角色配置已不可用","").await;return;};
+        let persona=&profile.persona;
         let spoken = if skip_voice { "<>（只写结束标记，不生成配音译文）" } else { "<对应的自然日语译文>" };
-        let mut messages=vec![LlmMessage::system(format!("你是{name}，友好、自然、简短地用中文与用户聊天。这是独立 XR 试玩会话。每轮回复一到三句，每句按 LingChat 格式输出：【情绪】中文正文（可选的简短动作）{spoken}。情绪可为正常、开心、悲伤、害羞、惊讶、思考。只扮演自己，不代替用户发言，不输出分析或工具调用。"))];
+        let mut messages=vec![LlmMessage::system(format!("{persona}每轮回复一到三句，每句按 LingChat 格式输出：【情绪】中文正文（可选的简短动作）{spoken}。情绪可为正常、开心、悲伤、害羞、惊讶、思考。只扮演自己，不代替用户发言，不输出分析或工具调用。"))];
         for row in history.iter().rev().take(30).collect::<Vec<_>>().into_iter().rev(){messages.push(if row.speaker=="user"{LlmMessage::user(&row.text)}else{LlmMessage::assistant(&row.text)});}
         messages.push(LlmMessage::user(req.text.clone()));
         // 完整句段到达即进入有界合成队列；后续 LLM 流继续读取，不等整轮结束。

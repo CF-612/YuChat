@@ -64,8 +64,8 @@ namespace LingChatXR.Chat
         void Spatial()
         {
             Heading("角色与空间","外观与对话角色分别管理。每个模型保留自己的身高和活动范围。");
-            var card=Box(body,"settings-card");Label(card,"对话角色  ·  "+(chat.Role=="feiyu"?"小肥鱼":"Ling 演示角色"),"settings-card-title");
-            Label(card,"当前声线：LingChat 默认日语 · 中文正文与历史\n切换下方外观不会更改人设、声线或对话历史。","settings-description");
+            var card=Box(body,"settings-card");Label(card,"对话角色  ·  "+chat.RoleLabel,"settings-card-title");
+            Label(card,"当前声线："+chat.VoiceLabel+" · 中文正文与历史\n切换下方外观不会更改人设、声线或对话历史。","settings-description");
             if(preview==null){Label(body,"此场景未载入模型；声音和服务设置仍可使用。","settings-description");save.SetEnabled(false);return;}
             var folders=preview.PackageFolders;var labels=preview.PackageLabels;
             var choices=labels.Select((s,i)=>s+"  ["+(i+1)+"]").ToList();
@@ -88,9 +88,12 @@ namespace LingChatXR.Chat
         {
             Heading("对话与声音","从思考的停顿，到一句话的节奏。试听使用已应用的音量。");
             var card=Box(body,"settings-card");
-            var roles=new List<string>{"小肥鱼","Ling 演示角色"};var role=new DropdownField("对话角色",roles,dialogue.role=="ling-demo"?1:0);card.Add(role);
-            role.RegisterValueChangedCallback(e=>{dialogue.role=e.newValue==roles[1]?"ling-demo":"feiyu";Changed();});
-            Label(card,"切换对话角色会切换人设和历史，保留模型外观；两者目前共用默认日语声线。","settings-description");
+            var entries=chat.AvailableRoles.ToList();
+            if(!entries.Any(r=>r.id==dialogue.role))entries.Add(new DialogueRole{id=dialogue.role,label="暂不可用 · "+dialogue.role});
+            var roles=entries.Select(r=>r.label+"  ["+r.id+"]").ToList();
+            var role=new DropdownField("对话角色",roles,entries.FindIndex(r=>r.id==dialogue.role));card.Add(role);
+            role.RegisterValueChangedCallback(e=>{int index=roles.IndexOf(e.newValue);if(index>=0){dialogue.role=entries[index].id;Changed();}});
+            Label(card,"切换对话角色会切换人设和历史，保留模型外观；可用角色与声线由当前 PC 服务提供。","settings-description");
             var mode = new DropdownField("角色声音",new System.Collections.Generic.List<string>{"拟声短声","静音","原日语 TTS"},dialogue.voiceMode=="tts"?2:dialogue.voiceMode=="muted"?1:0);
             mode.name="settings-voice-mode"; card.Add(mode);
             mode.RegisterValueChangedCallback(e=>{dialogue.voiceMode=mode.index==2?"tts":mode.index==1?"muted":"clips";Changed();});
