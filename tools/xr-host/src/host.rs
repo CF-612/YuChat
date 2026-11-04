@@ -16,9 +16,9 @@ pub struct History { pub speaker:String, pub text:String }
 pub struct Event { pub cursor:usize, pub session_id:String, pub role_id:String, pub turn_id:String, pub generation:u64, #[serde(default)] pub sentence_end_exclusive:usize, pub index:usize, pub kind:String, pub message:String, pub audio_file:String, pub emotion:String, pub motion:String, #[serde(default)] pub stage_action:Option<crate::stage_action::Decision>, #[serde(default)] pub stage_request_id:String }
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all="camelCase")]
-pub struct Session { pub id:String, pub role_id:String, pub generation:u64, pub history:Vec<History>, #[serde(skip)] pub history_base:usize, pub sentences:Vec<Sentence>, #[serde(skip)] pub sentences_base:usize, #[serde(skip)] pub events:Vec<Event>, #[serde(skip)] pub busy:bool, #[serde(skip)] cancel:Option<tokio::sync::oneshot::Sender<()>> }
+pub struct Session { pub id:String, pub role_id:String, pub generation:u64, pub history:Vec<History>, #[serde(skip)] pub history_base:usize, pub sentences:Vec<Sentence>, #[serde(skip)] pub sentences_base:usize, #[serde(skip)] pub recovery:Option<crate::recovery::TurnSnapshot>, #[serde(skip)] pub events:Vec<Event>, #[serde(skip)] pub busy:bool, #[serde(skip)] cancel:Option<tokio::sync::oneshot::Sender<()>> }
 impl Session {
-    pub fn empty(id:String,role_id:String)->Self {Self{id,role_id,generation:0,history:vec![],history_base:0,sentences:vec![],sentences_base:0,events:vec![],busy:false,cancel:None}}
+    pub fn empty(id:String,role_id:String)->Self {Self{id,role_id,generation:0,history:vec![],history_base:0,sentences:vec![],sentences_base:0,recovery:None,events:vec![],busy:false,cancel:None}}
     pub fn history_end(&self)->usize {self.history_base+self.history.len()}
     pub fn sentences_end(&self)->usize {self.sentences_base+self.sentences.len()}
     pub fn trim_saved_sentences(&mut self,saved:usize) {
@@ -47,6 +47,7 @@ impl Host {
     async fn event(&self,id:&str,g:u64,turn:&str,index:usize,kind:&str,message:&str,audio:&str) {
         let mut sessions=self.sessions.lock().await;
         if let Some(s)=sessions.get_mut(id).filter(|s|s.generation==g) {
+            if let Some(snapshot)=s.recovery.as_mut().filter(|x|x.generation==g&&x.turn_id==turn){snapshot.event(index,kind,message,audio);}
             let cursor=s.events.last().map_or(1,|e|e.cursor+1);
             let sentence=s.sentences.iter().rev().find(|x|x.turn_id==turn&&x.index==index);
             let emotion=sentence.map(|x|x.emotion.clone()).unwrap_or_default();let motion=sentence.map(|x|x.motion.clone()).unwrap_or_default();
@@ -96,6 +97,7 @@ pub async fn turn(State(h):State<Shared>,headers:HeaderMap,Json(req):Json<Turn>)
     s.generation+=1; s.busy=true;
     let g=s.generation; let id=s.id.clone(); let role=s.role_id.clone(); let history=s.history[s.history.len().saturating_sub(30)..].to_vec();
     let turn=Uuid::new_v4().to_string();
+    s.recovery=Some(crate::recovery::TurnSnapshot::new(turn.clone(),g,retry.as_ref().map_or(0,|r|r.index)));
     if retry.is_none()&&!req.test_voice {s.history.push(History{speaker:"user".into(),text:req.text.clone()});}
     let (cancel,stopped)=tokio::sync::oneshot::channel();
     s.cancel=Some(cancel);
@@ -117,10 +119,18 @@ pub async fn stop(State(h):State<Shared>,headers:HeaderMap,Json(req):Json<StopSe
     let s=all.get_mut(&req.session_id).ok_or((StatusCode::NOT_FOUND,"Session missing"))?;
     if req.expected_generation.is_some_and(|g|g>0 && g!=s.generation){return Ok(Json(json!({"generation":s.generation})));}
     if let Some(cancel)=s.cancel.take(){let _=cancel.send(());}
-    s.generation+=1;s.busy=false;Ok(Json(json!({"generation":s.generation})))
+    s.generation+=1;s.busy=false;s.recovery=None;Ok(Json(json!({"generation":s.generation})))
 }
 #[derive(Deserialize)] #[serde(rename_all="camelCase")]
 pub struct OpenSession {pub session_id:String, #[serde(default)] pub after:usize}
+#[derive(Deserialize)] #[serde(rename_all="camelCase")]
+pub struct SnapshotRequest {pub session_id:String,pub expected_generation:u64}
+pub async fn snapshot(State(h):State<Shared>,headers:HeaderMap,Query(req):Query<SnapshotRequest>)->ApiResult {
+    auth(&h,&headers)?;let all=h.sessions.lock().await;
+    let s=all.get(&req.session_id).ok_or((StatusCode::NOT_FOUND,"Session missing"))?;
+    if s.generation!=req.expected_generation{return Err((StatusCode::CONFLICT,"Session changed"));}
+    Ok(Json(json!({"sessionId":s.id,"generation":s.generation,"busy":s.busy,"latestCursor":s.events.last().map_or(0,|e|e.cursor),"snapshot":s.recovery})))
+}
 pub async fn events(State(h):State<Shared>,headers:HeaderMap,Query(req):Query<OpenSession>)->ApiResult {
     auth(&h,&headers)?;let all=h.sessions.lock().await;
     let s=all.get(&req.session_id).ok_or((StatusCode::NOT_FOUND,"Session missing"))?;
@@ -128,11 +138,14 @@ pub async fn events(State(h):State<Shared>,headers:HeaderMap,Query(req):Query<Op
     let oldest=s.events.first().map_or(0,|e|e.cursor);
     let gap=req.after>newest || req.after.saturating_add(1)<oldest;
     if gap {
+        let generation=s.generation;
         drop(all);
         let (_,history)=h.store.history_page(&req.session_id,usize::MAX,usize::MAX,&h.sessions).await.map_err(|_|(StatusCode::INTERNAL_SERVER_ERROR,"History recovery failed"))?;
-        return Ok(Json(json!({"cursorExpired":true,"oldestCursor":oldest,"cursor":newest,"history":history,"events":[]})));
+        let all=h.sessions.lock().await;let s=all.get(&req.session_id).ok_or((StatusCode::NOT_FOUND,"Session missing"))?;
+        if s.generation!=generation||s.events.last().map_or(0,|e|e.cursor)!=newest{return Err((StatusCode::CONFLICT,"Recovery changed; retry events"));}
+        return Ok(Json(json!({"sessionId":s.id,"generation":s.generation,"busy":s.busy,"snapshot":s.recovery,"cursorExpired":true,"oldestCursor":oldest,"latestCursor":newest,"cursor":newest,"history":history,"events":[]})));
     }
-    Ok(Json(json!({"oldestCursor":oldest,"cursor":newest,"events":s.events.iter().filter(|e|e.cursor>req.after).collect::<Vec<_>>()})))
+    Ok(Json(json!({"sessionId":s.id,"generation":s.generation,"busy":s.busy,"latestCursor":newest,"oldestCursor":oldest,"cursor":newest,"events":s.events.iter().filter(|e|e.cursor>req.after).collect::<Vec<_>>()})))
 }
 pub async fn audio(State(h):State<Shared>,headers:HeaderMap,Path(id):Path<String>)->Response {
     if let Err(e)=auth(&h,&headers){return e.into_response();}
@@ -221,6 +234,14 @@ async fn synthesize(h:&Shared,id:&str,g:u64,turn:&str,sentence:&mut Sentence,rep
 }
 async fn deliver(h:&Shared,id:&str,g:u64,turn:&str,sentence:&mut Sentence,replay:bool,skip_voice:bool) {
         if !h.current(id,g).await{return;}sentence.turn_id=turn.into();
+        {
+            let mut all=h.sessions.lock().await;
+            let Some(s)=all.get_mut(id).filter(|s|s.generation==g) else{return;};
+            if s.recovery.as_ref().is_some_and(|x|x.generation<g){s.recovery=None;}
+            let snapshot=s.recovery.get_or_insert_with(||crate::recovery::TurnSnapshot::new(turn.into(),g,sentence.index));
+            if snapshot.generation!=g||snapshot.turn_id!=turn{return;}
+            snapshot.begin_sentence(sentence);
+        }
         if !replay {if let Some(s)=h.sessions.lock().await.get_mut(id).filter(|s|s.generation==g){s.history.push(History{speaker:"assistant".into(),text:sentence.message.clone()});}}
         h.event(id,g,turn,sentence.index,"text",&sentence.message,"").await;
         if skip_voice {

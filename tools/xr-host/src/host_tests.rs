@@ -24,7 +24,7 @@ async fn fixture(replies:Vec<&str>,voice:Arc<VoiceFixture>)->Shared {
     let client=Arc::new(LlmClient::new(config,reqwest::Client::new(),Box::new(TextFixture{replies:std::sync::Mutex::new(replies.into_iter().map(String::from).collect())})));
     let root=std::env::temp_dir().join(format!("xr-host-test-{}",Uuid::new_v4()));tokio::fs::create_dir_all(root.join("audio")).await.unwrap();
     let mut sessions=HashMap::new();
-    for role in ["feiyu","ling-demo"] {sessions.insert(role.into(),Session{id:role.into(),role_id:role.into(),generation:1,history:vec![],history_base:0,sentences:vec![],sentences_base:0,events:vec![],cancel:None,busy:true});}
+    for role in ["feiyu","ling-demo"] {sessions.insert(role.into(),Session{id:role.into(),role_id:role.into(),generation:1,history:vec![],history_base:0,sentences:vec![],sentences_base:0,recovery:None,events:vec![],cancel:None,busy:true});}
     Arc::new(Host{store:crate::session_store::SessionStore::open(&root).unwrap().0,voice_queue:Default::default(),token:"fixture-only".into(),root,llm:RwLock::new(client.clone()),settings_path:None,translator:Translator::new(Arc::new(RwLock::new(Some(client))),true),voice,sessions:Mutex::new(sessions)})
 }
 fn request()->Turn {Turn{voice_mode:String::new(),session_id:"feiyu".into(),text:"".into(),retry_turn:"".into(),retry_index:0,test_voice:false,director:false,available:vec![],style:"normal".into(),previous_pose:String::new()}}
@@ -198,6 +198,30 @@ async fn stopping_blocked_turn_preserves_inference_until_engine_is_returned() {
     }).await.unwrap();
     let all=h.sessions.lock().await;
     assert_eq!(all["feiyu"].events.iter().filter(|e|e.kind=="audio").count(),1);
+}
+
+#[tokio::test]
+async fn recovery_survives_event_eviction_and_rejects_stale_identity() {
+    let h=fixture(vec![],Arc::new(VoiceFixture{calls:AtomicUsize::new(0),fail_first:false,gate:None})).await;
+    let mut headers=HeaderMap::new();headers.insert("authorization","Bearer fixture-only".parse().unwrap());
+    for index in [7,8,9] {
+        let mut row=Sentence{index,message:format!("正文 {index}"),emotion:"开心".into(),motion:"点头".into(),..Default::default()};
+        deliver(&h,"feiyu",1,"retry",&mut row,false,true).await;
+    }
+    for _ in 0..1025 {h.event("feiyu",1,"retry",0,"thinkingProgress","","").await;}
+    h.finish("feiyu",1,"retry").await;
+    let reply=events(State(h.clone()),headers.clone(),Query(OpenSession{session_id:"feiyu".into(),after:0})).await.unwrap().0;
+    assert_eq!(reply["cursorExpired"],true);assert_eq!(reply["busy"],false);
+    let snapshot=&reply["snapshot"];assert_eq!(snapshot["turnId"],"retry");assert_eq!(snapshot["generation"],1);
+    assert_eq!(snapshot["sentenceStart"],7);assert_eq!(snapshot["sentenceEndExclusive"],10);assert_eq!(snapshot["ended"],true);
+    assert_eq!(snapshot["sentences"].as_array().unwrap().len(),3);
+    assert_eq!(snapshot["sentences"][1]["emotion"],"开心");assert_eq!(snapshot["sentences"][1]["audioState"],"silent");
+    assert_eq!(super::snapshot(State(h.clone()),HeaderMap::new(),Query(SnapshotRequest{session_id:"feiyu".into(),expected_generation:1})).await.unwrap_err().0,StatusCode::UNAUTHORIZED);
+    let _=stop(State(h.clone()),headers.clone(),Json(StopSession{session_id:"feiyu".into(),expected_generation:Some(1)})).await.unwrap();
+    h.event("feiyu",1,"retry",7,"audio","旧句","old.wav").await;
+    assert_eq!(super::snapshot(State(h.clone()),headers.clone(),Query(SnapshotRequest{session_id:"feiyu".into(),expected_generation:1})).await.unwrap_err().0,StatusCode::CONFLICT);
+    let fresh=super::snapshot(State(h),headers,Query(SnapshotRequest{session_id:"feiyu".into(),expected_generation:2})).await.unwrap().0;
+    assert!(fresh["snapshot"].is_null());assert_eq!(fresh["busy"],false);
 }
 
 #[tokio::test]
