@@ -1,5 +1,5 @@
 //! 有序追加会话增量；磁盘操作不持有宿主会话锁。旧 JSON 保留不覆盖。
-use std::{collections::HashMap, fs::{self, OpenOptions}, io::Write, path::{Path,PathBuf}, sync::Arc};
+use std::{collections::HashMap, fs::{self, OpenOptions}, io::{Write,BufRead,BufReader}, path::{Path,PathBuf}, sync::Arc};
 use serde::{Serialize,Deserialize};
 use tokio::sync::Mutex;
 use crate::host::{Session,History,Sentence};
@@ -11,6 +11,24 @@ struct Record {
 }
 pub struct SessionStore { path:PathBuf, cursors:Arc<Mutex<HashMap<String,(usize,usize)>>> }
 impl SessionStore {
+    /// 离线导出给旧版使用；输入必须是停止写入后的日志或其一致性副本。
+    /// 不迁移、不修复输入，不覆盖既有输出。
+    pub fn export_legacy(root:&Path,output:&Path)->anyhow::Result<usize> {
+        let mut lines=BufReader::new(fs::File::open(root.join("sessions-v1.jsonl"))?).lines();
+        let header=lines.next().ok_or_else(||anyhow::anyhow!("Missing journal header"))??;
+        anyhow::ensure!(serde_json::from_str::<serde_json::Value>(&header)?["sessionStoreVersion"]==1,"Unsupported store");
+        let mut sessions:HashMap<String,Session>=HashMap::new();
+        for line in lines {
+            let r:Record=serde_json::from_str(&line?)?;
+            anyhow::ensure!(r.version==1,"Unsupported record");
+            let s=sessions.entry(r.id.clone()).or_insert_with(||Session::empty(r.id.clone(),r.role_id.clone()));
+            anyhow::ensure!(s.role_id==r.role_id&&s.history.len()==r.history_from&&s.sentences.len()==r.sentences_from,"Invalid journal sequence");
+            s.generation=r.generation;s.history.extend(r.history);s.sentences.extend(r.sentences);
+        }
+        let data=serde_json::to_vec(&sessions)?;
+        let mut file=OpenOptions::new().create_new(true).write(true).open(output)?;
+        file.write_all(&data)?;file.sync_all()?;Ok(sessions.len())
+    }
     pub fn open(root:&Path)->anyhow::Result<(Self,HashMap<String,Session>)> {
         fs::create_dir_all(root)?;
         let path=root.join("sessions-v1.jsonl");
@@ -41,8 +59,9 @@ impl SessionStore {
                 let r:Record=serde_json::from_slice(line)?;
                 anyhow::ensure!(r.version==1,"Unsupported record");
                 let s=sessions.entry(r.id.clone()).or_insert_with(||Session::empty(r.id.clone(),r.role_id.clone()));
-                anyhow::ensure!(s.role_id==r.role_id&&s.history.len()==r.history_from&&s.sentences.len()==r.sentences_from,"Session journal sequence mismatch");
+                anyhow::ensure!(s.role_id==r.role_id&&s.history_end()==r.history_from&&s.sentences.len()==r.sentences_from,"Session journal sequence mismatch");
                 s.generation=r.generation;s.history.extend(r.history);s.sentences.extend(r.sentences);
+                s.trim_saved_history(s.history_end());
             }
             if complete<data.len() {
                 // 只有最后一个未提交的半行允许恢复；完整损坏行拒绝启动，不静默丢历史。
@@ -51,8 +70,28 @@ impl SessionStore {
                 let file=OpenOptions::new().write(true).open(&path)?;file.set_len(complete as u64)?;file.sync_all()?;
             }
         }
-        let cursors=sessions.iter().map(|(id,s)|(id.clone(),(s.history.len(),s.sentences.len()))).collect();
+        let cursors=sessions.iter().map(|(id,s)|(id.clone(),(s.history_end(),s.sentences.len()))).collect();
+        for s in sessions.values_mut(){s.trim_saved_history(s.history_end());}
         Ok((Self{path,cursors:Arc::new(Mutex::new(cursors))},sessions))
+    }
+    pub async fn history_page(&self,id:&str,before:usize,limit:usize,sessions:&Mutex<HashMap<String,Session>>)->anyhow::Result<(usize,Vec<History>)> {
+        let writer=self.cursors.clone().lock_owned().await;
+        let (start,end,base,tail)={
+            let all=sessions.lock().await;let s=all.get(id).ok_or_else(||anyhow::anyhow!("Session missing"))?;
+            let end=before.min(s.history_end());let start=end.saturating_sub(limit);
+            let a=start.max(s.history_base).min(end);let tail=if end>s.history_base{s.history[a-s.history_base..end-s.history_base].to_vec()}else{vec![]};
+            (start,end,s.history_base,tail)
+        };
+        if start>=base {return Ok((start,tail));}
+        let path=self.path.clone();let id=id.to_owned();
+        tokio::task::spawn_blocking(move ||->anyhow::Result<(usize,Vec<History>)> {
+            let _writer=writer;let mut rows=Vec::new();
+            for line in BufReader::new(fs::File::open(path)?).lines().skip(1) {
+                let r:Record=serde_json::from_str(&line?)?;if r.id!=id{continue;}
+                for (offset,row) in r.history.into_iter().enumerate(){let index=r.history_from+offset;if index>=start&&index<end.min(base){rows.push(row);}}
+            }
+            rows.extend(tail);anyhow::ensure!(rows.len()==end-start,"History page gap");Ok((start,rows))
+        }).await?
     }
     pub async fn save(&self,id:&str,sessions:&Mutex<HashMap<String,Session>>)->anyhow::Result<()> {
         let mut cursors=self.cursors.clone().lock_owned().await;
@@ -60,12 +99,12 @@ impl SessionStore {
         let record={
             let all=sessions.lock().await;
             let s=all.get(id).ok_or_else(||anyhow::anyhow!("Session missing"))?;
-            anyhow::ensure!(h<=s.history.len()&&n<=s.sentences.len(),"Session history was truncated");
-            Record{version:1,id:s.id.clone(),role_id:s.role_id.clone(),generation:s.generation,history_from:h,sentences_from:n,history:s.history[h..].to_vec(),sentences:s.sentences[n..].to_vec()}
+            anyhow::ensure!(h>=s.history_base&&h<=s.history_end()&&n<=s.sentences.len(),"Session history was truncated");
+            Record{version:1,id:s.id.clone(),role_id:s.role_id.clone(),generation:s.generation,history_from:h,sentences_from:n,history:s.history[h-s.history_base..].to_vec(),sentences:s.sentences[n..].to_vec()}
         };
         let next=(h+record.history.len(),n+record.sentences.len());
         let path=self.path.clone();
-        let id=id.to_owned();
+        let saved_id=id.to_owned();
         tokio::task::spawn_blocking(move ||->anyhow::Result<()> {
             let mut data=serde_json::to_vec(&record)?;data.push(b'\n');
             let mut file=OpenOptions::new().append(true).open(path)?;
@@ -74,8 +113,9 @@ impl SessionStore {
                 file.set_len(length)?;file.sync_all()?;return Err(error.into());
             }
             // 等待者取消也不能提前释放写入顺序或丢失已经落盘的游标。
-            cursors.insert(id,next);Ok(())
+            cursors.insert(saved_id,next);Ok(())
         }).await??;
+        if let Some(s)=sessions.lock().await.get_mut(id){s.trim_saved_history(next.0);}
         Ok(())
     }
 }
@@ -100,6 +140,10 @@ mod tests {
         for _ in 0..2 {let (_,all)=SessionStore::open(&root).unwrap();assert_eq!(all["s"].history.len(),2);assert_eq!(all["s"].sentences[0].audio_file,"old.wav");}
         assert_eq!(fs::read(root.join("sessions.pre-journal.json")).unwrap(),old);
         assert_eq!(fs::read(root.join("sessions.json")).unwrap(),old);
+        let output=root.join("export.json");SessionStore::export_legacy(&root,&output).unwrap();
+        let exported:HashMap<String,Session>=serde_json::from_slice(&fs::read(&output).unwrap()).unwrap();
+        assert_eq!(exported["s"].history.len(),2);assert_eq!(exported["s"].sentences[0].audio_file,"old.wav");
+        assert!(SessionStore::export_legacy(&root,&output).is_err());
     }
     #[test]
     fn incomplete_tail_recovers_but_complete_corruption_is_not_ignored() {
@@ -133,6 +177,12 @@ mod tests {
         }).await.expect("Waiting storage blocked session state");
         assert!(!pending.is_finished());drop(writer);pending.await.unwrap().unwrap();
         let growth=fs::metadata(&store.path).unwrap().len()-before;assert!(growth<512,"Appended {growth} bytes for one row");
-        let (_,loaded)=SessionStore::open(&root).unwrap();assert_eq!(loaded["s"].history.len(),50_001);
+        let (reopened,loaded)=SessionStore::open(&root).unwrap();assert_eq!(loaded["s"].history_end(),50_001);assert_eq!(loaded["s"].history.len(),100);
+        let loaded=Mutex::new(loaded);
+        for before in [50_001,49_940,49_905,200,1,0] {
+            let (start,page)=reopened.history_page("s",before,50,&loaded).await.unwrap();
+            assert_eq!(start,before.saturating_sub(50));assert_eq!(page.len(),before-start);
+            for (offset,row) in page.iter().enumerate(){let index=start+offset;assert_eq!(row.text,if index==50_000{"新记录".into()}else{format!("历史记录 {index}")});}
+        }
     }
 }

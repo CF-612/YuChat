@@ -17,6 +17,12 @@ use tokio::sync::{Mutex,RwLock};
 use ai_service::tts::provider::TtsAdapter;
 #[tokio::main]
 async fn main()->anyhow::Result<()> {
+    if let Some(index)=std::env::args().position(|a|a=="--export-session-history") {
+        let output=std::env::args().nth(index+1).ok_or_else(||anyhow::anyhow!("Specify a new output path"))?;
+        let root=PathBuf::from(std::env::var("XR_HOST_DATA")?);
+        let count=session_store::SessionStore::export_legacy(&root,std::path::Path::new(&output))?;
+        println!("XR_HISTORY_EXPORTED sessions={count}");return Ok(());
+    }
     if std::env::args().any(|a|a=="--pairing-gateway"){return gateway::run().await;}
     let settings=PathBuf::from(std::env::var("XR_LINGCHAT_SETTINGS")?);
     let models=PathBuf::from(std::env::var("XR_TTS_MODELS")?);

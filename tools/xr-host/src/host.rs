@@ -16,8 +16,15 @@ pub struct History { pub speaker:String, pub text:String }
 pub struct Event { pub cursor:usize, pub session_id:String, pub role_id:String, pub turn_id:String, pub generation:u64, #[serde(default)] pub sentence_end_exclusive:usize, pub index:usize, pub kind:String, pub message:String, pub audio_file:String, pub emotion:String, pub motion:String, #[serde(default)] pub stage_action:Option<crate::stage_action::Decision>, #[serde(default)] pub stage_request_id:String }
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all="camelCase")]
-pub struct Session { pub id:String, pub role_id:String, pub generation:u64, pub history:Vec<History>, pub sentences:Vec<Sentence>, #[serde(skip)] pub events:Vec<Event>, #[serde(skip)] pub busy:bool, #[serde(skip)] cancel:Option<tokio::sync::oneshot::Sender<()>> }
-impl Session { pub fn empty(id:String,role_id:String)->Self {Self{id,role_id,generation:0,history:vec![],sentences:vec![],events:vec![],busy:false,cancel:None}} }
+pub struct Session { pub id:String, pub role_id:String, pub generation:u64, pub history:Vec<History>, #[serde(skip)] pub history_base:usize, pub sentences:Vec<Sentence>, #[serde(skip)] pub events:Vec<Event>, #[serde(skip)] pub busy:bool, #[serde(skip)] cancel:Option<tokio::sync::oneshot::Sender<()>> }
+impl Session {
+    pub fn empty(id:String,role_id:String)->Self {Self{id,role_id,generation:0,history:vec![],history_base:0,sentences:vec![],events:vec![],busy:false,cancel:None}}
+    pub fn history_end(&self)->usize {self.history_base+self.history.len()}
+    pub fn trim_saved_history(&mut self,saved:usize) {
+        let remove=self.history.len().saturating_sub(100).min(saved.saturating_sub(self.history_base));
+        self.history.drain(..remove);self.history_base+=remove;
+    }
+}
 pub struct VoiceQueue { slots:Arc<tokio::sync::Semaphore>, engine:Mutex<()> }
 impl Default for VoiceQueue {
     fn default()->Self {Self{slots:Arc::new(tokio::sync::Semaphore::new(8)),engine:Mutex::new(())}}
@@ -54,20 +61,18 @@ pub async fn open(State(h):State<Shared>,headers:HeaderMap,Json(req):Json<Open>)
     if req.role_id!="feiyu" && req.role_id!="ling-demo" {return Err((StatusCode::BAD_REQUEST,"Unknown role"));}
     let mut all=h.sessions.lock().await;
     let id=all.values().find(|s|s.role_id==req.role_id).map(|s|s.id.clone()).unwrap_or_else(||Uuid::new_v4().to_string());
-    let s=all.entry(id.clone()).or_insert_with(||Session{id,role_id:req.role_id,generation:0,history:vec![],sentences:vec![],events:vec![],cancel:None,busy:false});
-    let start=req.history_limit.map_or(0,|limit|s.history.len().saturating_sub(limit.clamp(1,100)));
-    Ok(Json(json!({"sessionId":s.id,"roleId":s.role_id,"generation":s.generation,"history":&s.history[start..],"historyBefore":start,"cursor":s.events.last().map_or(0,|e|e.cursor)})))
+    let s=all.entry(id.clone()).or_insert_with(||Session::empty(id,req.role_id));
+    let start=s.history.len().saturating_sub(req.history_limit.unwrap_or(50).clamp(1,100));
+    Ok(Json(json!({"sessionId":s.id,"roleId":s.role_id,"generation":s.generation,"history":&s.history[start..],"historyBefore":s.history_base+start,"cursor":s.events.last().map_or(0,|e|e.cursor)})))
 }
 
 #[derive(Deserialize)] #[serde(rename_all="camelCase")]
 pub struct HistoryPage { pub session_id:String, pub before:usize }
 pub async fn history_page(State(h):State<Shared>,headers:HeaderMap,Query(req):Query<HistoryPage>)->ApiResult {
     auth(&h,&headers)?;
-    let sessions=h.sessions.lock().await;
-    let s=sessions.get(&req.session_id).ok_or((StatusCode::NOT_FOUND,"Session missing"))?;
-    let end=req.before.min(s.history.len());
-    let start=end.saturating_sub(50);
-    Ok(Json(json!({"historyBefore":start,"history":&s.history[start..end]})))
+    if !h.sessions.lock().await.contains_key(&req.session_id){return Err((StatusCode::NOT_FOUND,"Session missing"));}
+    let (start,history)=h.store.history_page(&req.session_id,req.before,50,&h.sessions).await.map_err(|_|(StatusCode::INTERNAL_SERVER_ERROR,"History read failed"))?;
+    Ok(Json(json!({"historyBefore":start,"history":history})))
 }
 #[derive(Deserialize)] #[serde(rename_all="camelCase")]
 pub struct Turn {pub session_id:String, #[serde(default)] pub voice_mode:String, #[serde(default)] pub text:String, #[serde(default)] pub retry_turn:String, #[serde(default)] pub retry_index:usize, #[serde(default)] pub test_voice:bool, #[serde(default)] pub director:bool, #[serde(default)] pub available:Vec<crate::stage_action::Candidate>, #[serde(default)] pub style:String, #[serde(default)] pub previous_pose:String}
@@ -81,7 +86,7 @@ pub async fn turn(State(h):State<Shared>,headers:HeaderMap,Json(req):Json<Turn>)
     if s.busy {return Err((StatusCode::CONFLICT,"Session busy"));}
     let retry=if !req.retry_turn.is_empty(){Some(s.sentences.iter().find(|x|x.turn_id==req.retry_turn&&x.index==req.retry_index).cloned().ok_or((StatusCode::NOT_FOUND,"Sentence missing"))?)}else{None};
     s.generation+=1; s.busy=true;
-    let g=s.generation; let id=s.id.clone(); let role=s.role_id.clone(); let history=s.history.clone();
+    let g=s.generation; let id=s.id.clone(); let role=s.role_id.clone(); let history=s.history[s.history.len().saturating_sub(30)..].to_vec();
     let turn=Uuid::new_v4().to_string();
     if retry.is_none()&&!req.test_voice {s.history.push(History{speaker:"user".into(),text:req.text.clone()});}
     let (cancel,stopped)=tokio::sync::oneshot::channel();
@@ -115,7 +120,9 @@ pub async fn events(State(h):State<Shared>,headers:HeaderMap,Query(req):Query<Op
     let oldest=s.events.first().map_or(0,|e|e.cursor);
     let gap=req.after>newest || req.after.saturating_add(1)<oldest;
     if gap {
-        return Ok(Json(json!({"cursorExpired":true,"oldestCursor":oldest,"cursor":newest,"history":s.history,"events":[]})));
+        drop(all);
+        let (_,history)=h.store.history_page(&req.session_id,usize::MAX,usize::MAX,&h.sessions).await.map_err(|_|(StatusCode::INTERNAL_SERVER_ERROR,"History recovery failed"))?;
+        return Ok(Json(json!({"cursorExpired":true,"oldestCursor":oldest,"cursor":newest,"history":history,"events":[]})));
     }
     Ok(Json(json!({"oldestCursor":oldest,"cursor":newest,"events":s.events.iter().filter(|e|e.cursor>req.after).collect::<Vec<_>>()})))
 }
