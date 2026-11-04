@@ -439,7 +439,9 @@ namespace LingChatXR
                     }
                     if (preferences.touchEnabled && leftHeld && onHead) { if(Interaction.BeginTouch(MouseOwner))avatar.SampleTouch(touchHit.point); }
                     else Interaction.EndTouch(MouseOwner);
-                    if (rightDown && avatar.GrabProxy.Raycast(ray, out _, 4) && Interaction.BeginGrab(MouseOwner, out grabGeneration))
+                    bool onTail = avatar.TailGrabProxy != null && avatar.TailGrabProxy.Raycast(ray, out _, 4);
+                    if (rightDown && (onTail || avatar.GrabProxy.Raycast(ray, out _, 4)) &&
+                        avatar.SelectGrabPoint(onTail) && Interaction.BeginGrab(MouseOwner, out grabGeneration))
                     {
                         lift = Mathf.Max(0, Interaction.Position.Y - TableY);
                         var plane = new Plane(Vector3.up, new Vector3(0, TableY, 0));

@@ -1,0 +1,8 @@
+Jitabata.anim 来自用户提供的 JitabataAnimation.zip。
+随包 Readme.txt 声明 CC0，原说明为
+This is licensed under CC0.
+http://creativecommons.org/publicdomain/zero/1.0/deed.ja
+
+jitabata.vrma 由 Unity Humanoid 与 UniVRM VrmAnimationExporter 转出。
+保留完整约 11.77 秒动作，运行时抓取层负责循环混合与倒挂。
+动画未包含自定义尾骨轨道，尾巴仍由模型已有 SpringBone 驱动。

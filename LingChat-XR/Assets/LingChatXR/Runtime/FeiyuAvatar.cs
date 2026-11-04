@@ -19,6 +19,10 @@ namespace LingChatXR
         public SphereCollider TouchProxy { get; private set; }
         public CapsuleCollider GrabProxy { get; private set; }
         public Transform HeadGripBone=>head;
+        public SphereCollider TailGrabProxy { get; private set; }
+        public Transform HeldGripBone => Motions != null && Motions.TailGrabbed ? TailGrabProxy?.transform : head;
+        public float HeldGripPadding => Motions != null && Motions.TailGrabbed ? 0 : HeightMeters * .08f;
+        public bool SelectGrabPoint(bool tail) => Motions != null && (!tail || TailGrabProxy != null) && Motions.SelectTailGrab(tail);
         private Transform head;
         private Transform gaze;
         private Quaternion headRest;
@@ -105,6 +109,7 @@ namespace LingChatXR
             // 在同一实例上改变统一尺度，保留当前骨骼、表情和音频；不重新载入模型。
             Instance.transform.localScale*=ratio;Instance.transform.localPosition*=ratio;
             MeasuredHeightMeters*=ratio;FootprintRadius=FootprintAtHeight(height);HeightMeters=height;
+            if(TailGrabProxy!=null)TailGrabProxy.radius=height*.10f/Mathf.Abs(TailGrabProxy.transform.lossyScale.x);
             GrabProxy.center=Vector3.up*height*.45f;GrabProxy.height=height*.65f;GrabProxy.radius=height*.15f;
             Physics?.CaptureStructuralScale();
             Physics?.RequestReset();
@@ -172,6 +177,18 @@ namespace LingChatXR
             if (Instance.TryGetBoneTransform(HumanBodyBones.Head, out head)) headRest = head.localRotation;
             if (Instance.TryGetBoneTransform(HumanBodyBones.Chest, out chest)) chestRest = chest.localRotation;
             Motions=new Chat.XrMotionPlayer(Instance,MotionPreviewMode,Package.model.sha256);
+            var tailPath = Package.interactionBindings?.tailGripPath;
+            if (!string.IsNullOrEmpty(tailPath))
+            {
+                var tail = Instance.transform.Find(tailPath);
+                if (tail != null)
+                {
+                    TailGrabProxy = tail.gameObject.AddComponent<SphereCollider>();
+                    TailGrabProxy.isTrigger = true;
+                    TailGrabProxy.radius = HeightMeters * .10f / Mathf.Abs(tail.lossyScale.x);
+                }
+                else Debug.LogWarning("角色包的尾巴抓点路径不存在：" + tailPath);
+            }
             if(!MotionPreviewMode)_=Motions.PrepareGrabbed();
             var rig=Instance.Runtime.ControlRig;
             presentationNeck=rig.GetBoneTransform(HumanBodyBones.Neck);presentationHead=rig.GetBoneTransform(HumanBodyBones.Head);presentationChest=rig.GetBoneTransform(HumanBodyBones.Chest);

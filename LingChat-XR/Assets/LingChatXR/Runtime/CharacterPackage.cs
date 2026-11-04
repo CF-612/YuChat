@@ -14,6 +14,12 @@ namespace LingChatXR
         public string characterId;
         public string displayName;
         public ModelReference model;
+        public InteractionBindings interactionBindings;
+    }
+
+    [Serializable] public sealed class InteractionBindings
+    {
+        public string tailGripPath;
     }
 
     [Serializable] public sealed class ModelReference
