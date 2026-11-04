@@ -30,6 +30,10 @@ pub struct AudioInventory {
 }
 pub struct SessionStore { path:PathBuf, cursors:Arc<Mutex<HashMap<String,(usize,usize)>>> }
 impl SessionStore {
+    #[cfg(test)]
+    pub async fn hold_writer_for_test(&self)->tokio::sync::OwnedMutexGuard<HashMap<String,(usize,usize)>> {
+        self.cursors.clone().lock_owned().await
+    }
     /// 离线导出给旧版使用；输入必须是停止写入后的日志或其一致性副本。
     /// 不迁移、不修复输入，不覆盖既有输出。
     pub fn export_legacy(root:&Path,output:&Path)->anyhow::Result<usize> {
@@ -78,7 +82,20 @@ impl SessionStore {
                 let data=fs::read(&old)?;
                 sessions=serde_json::from_slice::<HashMap<String,Session>>(&data)?;
                 let backup=root.join("sessions.pre-journal.json");
-                if !backup.exists(){let mut f=OpenOptions::new().create_new(true).write(true).open(backup)?;f.write_all(&data)?;f.sync_all()?;}
+                // 旧实现可能留下半份备份；只恢复可确认是原文件前缀的中断写入。
+                // 不同内容的备份可能属于另一次迁移，必须保留并拒绝覆盖。
+                if backup.exists() {
+                    let existing=fs::read(&backup)?;
+                    if existing!=data {
+                        anyhow::ensure!(data.starts_with(&existing),"Migration backup differs from source; both files preserved");
+                        fs::rename(&backup,root.join(format!("sessions.pre-journal-incomplete-{}.json",uuid::Uuid::new_v4())))?;
+                    }
+                }
+                if !backup.exists(){
+                    let pending=root.join(format!("sessions.pre-journal-{}.pending",uuid::Uuid::new_v4()));
+                    let mut f=OpenOptions::new().create_new(true).write(true).open(&pending)?;
+                    f.write_all(&data)?;f.sync_all()?;drop(f);fs::rename(pending,&backup)?;
+                }
             }
             // 完整迁移写临时文件再提交；已提交 journal 本身就是迁移标记。
             let tmp=root.join("sessions-v1.migrating");
@@ -121,10 +138,15 @@ impl SessionStore {
         let path=self.path.clone();let id=id.to_owned();
         tokio::task::spawn_blocking(move ||->anyhow::Result<(usize,Vec<History>)> {
             let _writer=writer;let mut rows=Vec::new();
-            for line in BufReader::new(fs::File::open(path)?).lines().skip(1) {
-                let r:Record=serde_json::from_str(&line?)?;if r.id!=id{continue;}
+            let mut next=0;
+            let (_,incomplete)=scan_records(&path,|r| {
+                if r.id!=id{return Ok(());}
+                anyhow::ensure!(r.history_from==next,"History journal sequence mismatch");
+                next+=r.history.len();
                 for (offset,row) in r.history.into_iter().enumerate(){let index=r.history_from+offset;if index>=start&&index<end.min(base){rows.push(row);}}
-            }
+                Ok(())
+            })?;
+            anyhow::ensure!(!incomplete,"Incomplete history journal");
             rows.extend(tail);anyhow::ensure!(rows.len()==end-start,"History page gap");Ok((start,rows))
         }).await?
     }
@@ -175,6 +197,46 @@ impl SessionStore {
 mod tests {
     use super::*;
     fn root()->PathBuf {std::env::temp_dir().join(format!("xr-store-{}",uuid::Uuid::new_v4()))}
+    #[test]
+    fn migration_recovers_partial_backup_without_discarding_it() {
+        let root=root();fs::create_dir_all(&root).unwrap();
+        let old=serde_json::to_vec(&HashMap::from([("s",Session::empty("s".into(),"feiyu".into()))])).unwrap();
+        let partial=&old[..old.len()/2];
+        fs::write(root.join("sessions.json"),&old).unwrap();
+        fs::write(root.join("sessions.pre-journal.json"),partial).unwrap();
+        let (_,sessions)=SessionStore::open(&root).unwrap();assert!(sessions.contains_key("s"));
+        assert_eq!(fs::read(root.join("sessions.json")).unwrap(),old);
+        assert_eq!(fs::read(root.join("sessions.pre-journal.json")).unwrap(),old);
+        let archived=fs::read_dir(&root).unwrap().map(|x|x.unwrap().path()).find(|x|x.file_name().unwrap().to_string_lossy().starts_with("sessions.pre-journal-incomplete-")).unwrap();
+        assert_eq!(fs::read(archived).unwrap(),partial);
+        assert!(SessionStore::open(&root).is_ok());
+    }
+    #[test]
+    fn migration_refuses_conflicting_backup_without_committing_journal() {
+        let root=root();fs::create_dir_all(&root).unwrap();
+        let old=b"{}";let backup=b"{\"other\":true}";
+        fs::write(root.join("sessions.json"),old).unwrap();fs::write(root.join("sessions.pre-journal.json"),backup).unwrap();
+        assert!(SessionStore::open(&root).is_err());
+        assert_eq!(fs::read(root.join("sessions.json")).unwrap(),old);
+        assert_eq!(fs::read(root.join("sessions.pre-journal.json")).unwrap(),backup);
+        assert!(!root.join("sessions-v1.jsonl").exists());
+    }
+    #[tokio::test]
+    async fn historical_pages_reject_corruption_and_uncommitted_tail_without_mutation() {
+        let root=root();let (store,_)=SessionStore::open(&root).unwrap();
+        let mut s=Session::empty("s".into(),"feiyu".into());
+        s.history=(0..150).map(|i|History{speaker:"user".into(),text:i.to_string()}).collect();
+        let sessions=Mutex::new(HashMap::from([("s".into(),s)]));store.save("s",&sessions).await.unwrap();
+        let valid=fs::read_to_string(&store.path).unwrap();
+        let tail=serde_json::to_string(&Record{version:1,id:"s".into(),role_id:"feiyu".into(),generation:0,history_from:150,sentences_from:0,history:vec![],sentences:vec![]}).unwrap();
+        for corrupt in [format!("{valid}{tail}"),valid.replacen("sessionStoreVersion\":1","sessionStoreVersion\":2",1),valid.replacen("\"version\":1","\"version\":2",1),valid.replacen("\"history_from\":0","\"history_from\":1",1)] {
+            fs::write(&store.path,&corrupt).unwrap();
+            assert!(store.history_page("s",25,25,&sessions).await.is_err());
+            assert_eq!(fs::read_to_string(&store.path).unwrap(),corrupt);
+        }
+        fs::write(&store.path,valid).unwrap();
+        assert_eq!(store.history_page("s",25,25,&sessions).await.unwrap().1[24].text,"24");
+    }
     #[tokio::test]
     async fn sentence_cache_preserves_current_turn_and_recovers_old_rows_from_disk() {
         let root=root();let (store,_)=SessionStore::open(&root).unwrap();

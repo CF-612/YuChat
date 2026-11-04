@@ -29,6 +29,47 @@ async fn fixture(replies:Vec<&str>,voice:Arc<VoiceFixture>)->Shared {
 }
 fn request()->Turn {Turn{voice_mode:String::new(),session_id:"feiyu".into(),text:"".into(),retry_turn:"".into(),retry_index:0,test_voice:false,director:false,available:vec![],style:"normal".into(),previous_pose:String::new()}}
 
+#[tokio::test]
+async fn stopped_retry_waiting_for_disk_cannot_start_a_new_turn() {
+    let voice=Arc::new(VoiceFixture{calls:AtomicUsize::new(0),fail_first:false,gate:None});
+    let h=fixture(vec![],voice.clone()).await;
+    {
+        let mut all=h.sessions.lock().await;let s=all.get_mut("feiyu").unwrap();s.busy=false;
+        s.sentences=(0..150).map(|i|Sentence{turn_id:format!("old-{i}"),index:0,message:"旧句".into(),tts_text:"こんにちは".into(),..Default::default()}).collect();
+    }
+    h.store.save("feiyu",&h.sessions).await.unwrap();
+    assert!(h.sessions.lock().await["feiyu"].sentences_base>0);
+    let writer=h.store.hold_writer_for_test().await;
+    let mut headers=HeaderMap::new();headers.insert("authorization","Bearer fixture-only".parse().unwrap());
+    let mut req=request();req.retry_turn="old-0".into();
+    let pending=turn(State(h.clone()),headers.clone(),Json(req));tokio::pin!(pending);
+    assert!(futures_util::poll!(&mut pending).is_pending());
+    assert_eq!(stop(State(h.clone()),headers,Json(StopSession{session_id:"feiyu".into(),expected_generation:Some(1)})).await.unwrap().0["generation"],2);
+    drop(writer);
+    assert_eq!(pending.await.unwrap_err().0,StatusCode::CONFLICT);
+    let all=h.sessions.lock().await;let s=&all["feiyu"];
+    assert_eq!(s.generation,2);assert!(!s.busy);assert!(s.recovery.is_none());assert!(s.history.is_empty());assert!(s.events.is_empty());
+    assert_eq!(voice.calls.load(Ordering::SeqCst),0);
+}
+
+#[tokio::test]
+async fn gap_recovery_rejects_generation_or_cursor_changes_while_waiting_for_disk() {
+    for change_generation in [true,false] {
+        let h=fixture(vec![],Arc::new(VoiceFixture{calls:AtomicUsize::new(0),fail_first:false,gate:None})).await;
+        let mut headers=HeaderMap::new();headers.insert("authorization","Bearer fixture-only".parse().unwrap());
+        let writer=h.store.hold_writer_for_test().await;
+        let pending=events(State(h.clone()),headers.clone(),Query(OpenSession{session_id:"feiyu".into(),after:999}));tokio::pin!(pending);
+        assert!(futures_util::poll!(&mut pending).is_pending());
+        if change_generation {
+            assert_eq!(stop(State(h.clone()),headers,Json(StopSession{session_id:"feiyu".into(),expected_generation:Some(1)})).await.unwrap().0["generation"],2);
+        } else {
+            h.event("feiyu",1,"current",0,"text","新句","").await;
+        }
+        drop(writer);
+        assert_eq!(pending.await.unwrap_err().0,StatusCode::CONFLICT);
+    }
+}
+
 #[tokio::test] async fn role_catalog_opens_configured_identity_without_changing_existing_history(){
     let mut h=fixture(vec![],Arc::new(VoiceFixture{calls:AtomicUsize::new(0),fail_first:false,gate:None})).await;
     let mut config:Value=serde_json::from_str(include_str!("../roles.default.json")).unwrap();
