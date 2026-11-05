@@ -29,6 +29,7 @@ namespace LingChatXR
     {
         public int group, index;
         public string node;
+        public string capsuleEndBone;
         public Vector3 offset;
         public float radius;
     }

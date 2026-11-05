@@ -24,8 +24,22 @@ namespace LingChatXR.Editor
         static readonly string[] FaceLabels={"开心","害羞","心动","疑问","惊讶","生气","悲伤","安心"};
         bool watching;string previous="";
         Vector2 scroll;
+        bool ardyOnly;
+        const string AutoArdy="YuChat.ARDY.StartOnReady";
         [MenuItem("YuChat/动作实验/自然语言导演试玩")]
-        static void Open()=>GetWindow<DirectorPlaytestWindow>("小肥鱼动作导演");
+        static void Open(){GetWindow<DirectorPlaytestWindow>("小肥鱼动作导演").ardyOnly=false;}
+        [MenuItem("YuChat/动作实验/直接试玩 ARDY 接步")]
+        static void OpenArdy()
+        {
+            if(!EditorApplication.isPlaying&&!UnityEditor.SceneManagement.EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())return;
+            var window=GetWindow<DirectorPlaytestWindow>("小肥鱼动作导演");window.ardyOnly=true;
+            SessionState.SetBool(AutoArdy,true);
+            if(!EditorApplication.isPlaying)
+            {
+                UnityEditor.SceneManagement.EditorSceneManager.OpenScene(PreviewProject.ScenePath);
+                EditorApplication.EnterPlaymode();
+            }
+        }
         public static void LaunchPlaytest()
         {
             UnityEditor.SceneManagement.EditorSceneManager.OpenScene(PreviewProject.ScenePath);
@@ -59,6 +73,11 @@ namespace LingChatXR.Editor
         internal string CachedPackage=>cache;
         void OnInspectorUpdate(){
             var live=Live;
+            if(EditorApplication.isPlaying && live!=null && live.Ready && SessionState.GetBool(AutoArdy,false))
+            {
+                SessionState.SetBool(AutoArdy,false);ardyOnly=true;
+                StartArdy(live);
+            }
             if(watching && (!live||!live.Ready||live.Avatar!=owner||live.Interaction.Generation!=interaction)){
                 revision++;watching=false;outcome="已过期或被交互打断";cache="";
             }
@@ -70,20 +89,34 @@ namespace LingChatXR.Editor
             EditorGUILayout.LabelField("Core8 路径试玩",EditorStyles.boldLabel);
             if(demo==null || !demo.Active)
             {
-                using(new EditorGUI.DisabledScope(live.Interaction.State!=Core.PetState.Idle))
-                    if(GUILayout.Button("固定走路 → ARDY 接步"))
-                        (demo!=null?demo:live.gameObject.AddComponent<ArdyPlaytest>()).Begin(live);
+                if(GUILayout.Button(live.Interaction.PlaneConfirmed?"固定走路 → ARDY 接步":"放置并开始 ARDY 接步"))
+                    StartArdy(live);
             }
             else
             {
                 EditorGUILayout.LabelField("控制者 / 目标",demo.Owner+" / "+demo.Target);
+                EditorGUILayout.LabelField("生成进度",demo.WorkerPhase);
                 EditorGUILayout.LabelField("请求往返 / 缓冲",demo.RoundTripMs.ToString("0")+" ms / "+demo.Buffered+" 帧");
                 if(GUILayout.Button("切换前方 / 侧方目标")) demo.ChangeTarget();
                 if(GUILayout.Button("停止路径试玩")){demo.End();UnityEngine.Object.Destroy(demo);}
             }
             if(demo!=null) EditorGUILayout.LabelField(demo.Status);
         }
+        internal static void StartArdy(FeiyuPreview live)
+        {
+            if(!live.Interaction.PlaneConfirmed && !live.Place(Vector3.zero))return;
+            var demo=live.GetComponent<ArdyPlaytest>()??live.gameObject.AddComponent<ArdyPlaytest>();
+            demo.Begin(live);
+        }
         void OnGUI(){
+            if(ardyOnly)
+            {
+                var preview=Live;
+                if(!EditorApplication.isPlaying || !preview || !preview.Ready)
+                    EditorGUILayout.HelpBox(preview?preview.Status:"等待 PC 试玩场景",MessageType.Info);
+                else DrawArdy(preview);
+                return;
+            }
             scroll=EditorGUILayout.BeginScrollView(scroll);
             EditorGUILayout.LabelField("PC 导演",directorStatus);EditorGUILayout.LabelField("T2M",generatorStatus);
             if(GUILayout.Button("刷新服务状态"))OnEnable();

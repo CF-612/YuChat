@@ -14,7 +14,7 @@ namespace LingChatXR
         Vrm10Instance instance;
         readonly Dictionary<Transform,BlittableJointMutable> source=new Dictionary<Transform,BlittableJointMutable>();
         readonly Dictionary<Transform,BlittableJointMutable> materials=new Dictionary<Transform,BlittableJointMutable>();
-        readonly Dictionary<VRM10SpringBoneCollider,(Vector3 offset,float radius)> colliderSource=new Dictionary<VRM10SpringBoneCollider,(Vector3,float)>();
+        readonly Dictionary<VRM10SpringBoneCollider,(Vector3 offset,float radius,VRM10SpringBoneColliderTypes type,Vector3 tail)> colliderSource=new();
         readonly List<VRM10SpringBoneColliderGroup[]> groupSource=new List<VRM10SpringBoneColliderGroup[]>();
         public int ColliderRebuildCount { get; private set; }
         public int ConfiguredJointCount => materials.Count;
@@ -42,7 +42,8 @@ namespace LingChatXR
         {
             Vector3 position=FeiyuPreview.ToUnity(state.Position),velocity=Vector3.zero;
             if(state.State==Core.PetState.Descending)velocity=Vector3.up*state.VerticalVelocity;
-            else if(state.State==Core.PetState.Held&&hasPosition&&float.IsFinite(dt)&&dt>0)
+            else if((state.State==Core.PetState.Held || state.State==Core.PetState.Idle&&state.AutonomousEnabled) &&
+                hasPosition&&float.IsFinite(dt)&&dt>0&&dt<=.10f)
                 velocity=(position-previousPosition)/dt;
             previousPosition=position;hasPosition=true;
             if(!MotionAirEnabled||paused||!float.IsFinite(velocity.sqrMagnitude)){MotionAirForce=Vector3.zero;return;}
@@ -55,7 +56,7 @@ namespace LingChatXR
             foreach(var spring in value.SpringBone.Springs)
                 foreach(var joint in spring.Joints)source[joint.transform]=joint.Blittable;
             foreach(var group in value.SpringBone.ColliderGroups)
-                foreach(var collider in group.Colliders)if(collider!=null)colliderSource[collider]=(collider.Offset,collider.Radius);
+                foreach(var collider in group.Colliders)if(collider!=null)colliderSource[collider]=(collider.Offset,collider.Radius,collider.ColliderType,collider.Tail);
             foreach(var spring in value.SpringBone.Springs)groupSource.Add(spring.ColliderGroups.ToArray());
             ConfigureMaterials(configuration);
         }
@@ -88,7 +89,7 @@ namespace LingChatXR
         void ConfigureColliders(SpringPhysicsConfiguration configuration)
         {
             bool changed=false;
-            var desired=new Dictionary<VRM10SpringBoneCollider,(Vector3 offset,float radius)>(colliderSource);
+            var desired=new Dictionary<VRM10SpringBoneCollider,(Vector3 offset,float radius,VRM10SpringBoneColliderTypes type,Vector3 tail)>(colliderSource);
             if(configuration?.colliders!=null)foreach(var entry in configuration.colliders)
             {
                 if(entry==null||entry.group<0||entry.group>=instance.SpringBone.ColliderGroups.Count)continue;
@@ -98,12 +99,24 @@ namespace LingChatXR
                 if(collider==null||collider.transform.name!=entry.node||!float.IsFinite(entry.offset.sqrMagnitude)||
                     !float.IsFinite(entry.radius)||entry.radius<=0||entry.radius>1)
                 {Debug.LogWarning("碰撞校准无效，保留作者配置："+entry.node);continue;}
-                desired[collider]=(entry.offset,entry.radius);
+                var original=colliderSource[collider];
+                var shape=original.type;
+                Vector3 tail=original.tail;
+                if(!string.IsNullOrEmpty(entry.capsuleEndBone))
+                {
+                    if(!System.Enum.TryParse(entry.capsuleEndBone,out HumanBodyBones bone) || bone>=HumanBodyBones.LastBone ||
+                        !instance.TryGetBoneTransform(bone,out var end) || !end.IsChildOf(collider.transform))
+                    {Debug.LogWarning("碰撞胶囊终点无效："+entry.capsuleEndBone);continue;}
+                    tail=collider.transform.InverseTransformPoint(end.position);
+                    shape=VRM10SpringBoneColliderTypes.Capsule;
+                }
+                desired[collider]=(entry.offset,entry.radius,shape,tail);
             }
             foreach(var pair in desired)
             {
                 var c=pair.Key;var v=pair.Value;
-                if(c.Offset!=v.offset||!Mathf.Approximately(c.Radius,v.radius)){c.Offset=v.offset;c.Radius=v.radius;changed=true;}
+                if(c.Offset!=v.offset||!Mathf.Approximately(c.Radius,v.radius)||c.ColliderType!=v.type||c.Tail!=v.tail)
+                {c.Offset=v.offset;c.Radius=v.radius;c.ColliderType=v.type;c.Tail=v.tail;changed=true;}
             }
             for(int i=0;i<instance.SpringBone.Springs.Count;i++)
             {
@@ -119,7 +132,7 @@ namespace LingChatXR
             }
             if(changed){instance.Runtime.SpringBone.ReconstructSpringBone();ColliderRebuildCount++;resetPending=true;}
         }
-        public void RequestReset() {resetPending=true;hasPosition=false;MotionAirForce=Vector3.zero;}
+        public void RequestReset() {resetPending=true;hasPosition=false;hasRootPosition=false;MotionAirForce=Vector3.zero;}
         public void SetPaused(bool value)
         {
             if(paused==value)return;
@@ -127,7 +140,19 @@ namespace LingChatXR
         }
         void OnDisable(){if(instance!=null)SetPaused(true);}
         void OnEnable(){if(instance!=null)SetPaused(false);}
-        void LateUpdate()=>Prepare();
+        bool recoveringLargeStep;
+        int skippedGapFrames;
+        void LateUpdate()
+        {
+            // 导入后的超长帧不能作为实时物理的一步。第一帧正常时重新播种当前位置。
+            bool gap=Time.deltaTime>.10f;
+            if(!gap)skippedGapFrames=0;
+            bool skip=gap && (resetPending || recoveringLargeStep) && skippedGapFrames<2;
+            if(skip)skippedGapFrames++;
+            if(skip || recoveringLargeStep)RequestReset();
+            recoveringLargeStep=skip;
+            Prepare();
+        }
 
         // 自动路径在 VRM 姿态之后、唯一 SpringBone Service 之前；手动验证也调用同一入口。
         public void Prepare()
@@ -144,6 +169,7 @@ namespace LingChatXR
             // 注册/卸载只排队；先完成合并，避免把参数写入即将废弃的旧 buffer。
             combiner.ReconstructIfDirty(default).Complete();
             var buffer=combiner.Combined;if(buffer==null)return;
+            if(configured!=buffer)RequestReset();
             if(configured!=buffer||!Mathf.Approximately(lastScale,scale)||configuredAir!=MotionAirEnabled)
             {
                 foreach(var entry in source)
@@ -158,7 +184,8 @@ namespace LingChatXR
                 }
                 configured=buffer;lastScale=scale;configuredAir=MotionAirEnabled;
             }
-            instance.Runtime.SpringBone.SetModelLevel(instance.transform,new BlittableModelLevel(externalForce:MotionAirEnabled&&!paused?MotionAirForce:Vector3.zero,stopSpringBoneWriteback:paused,supportsScalingAtRuntime:true));
+            bool hold=paused||recoveringLargeStep;
+            instance.Runtime.SpringBone.SetModelLevel(instance.transform,new BlittableModelLevel(externalForce:MotionAirEnabled&&!hold?MotionAirForce:Vector3.zero,stopSpringBoneWriteback:hold,supportsScalingAtRuntime:true));
             Vector3 rootPosition=transform.position;
             Vector3 translation=hasRootPosition?rootPosition-previousRootPosition:Vector3.zero;
             previousRootPosition=rootPosition;hasRootPosition=true;
@@ -190,6 +217,7 @@ namespace LingChatXR
             instance.Runtime.SpringBone.RestoreInitialTransform();
             // 原包 RestoreInitialTransform 将世界 tail 写进所有链。带 center 的缓存需局部坐标。
             var current=buffer.CurrentTails;var prev=buffer.PrevTails;var next=buffer.NextTails;
+            bool seeded=false;
             foreach(var spring in buffer.Springs)
             {
                 int offset=spring.transformIndexOffset;
@@ -200,9 +228,11 @@ namespace LingChatXR
                     var point=buffer.TransformAccessArray[offset+logic.tailTransformIndex].position;
                     if(spring.centerTransformIndex>=0)point=buffer.TransformAccessArray[offset+spring.centerTransformIndex].InverseTransformPoint(point);
                     current[i]=prev[i]=next[i]=point;
+                    seeded=true;
                 }
             }
-            resetPending=false;
+            // 全局缓冲可能先包含其他实例；等当前实例真正注册后再完成复位。
+            resetPending=!seeded && source.Count>0;
         }
     }
 }

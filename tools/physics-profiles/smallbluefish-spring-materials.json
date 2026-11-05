@@ -124,24 +124,26 @@
     },
     {
       "node": "leftUpperLeg",
+      "capsuleEndBone": "LeftLowerLeg",
       "offset": {
         "z": 0,
         "x": 0,
         "y": 0
       },
       "group": 0,
-      "radius": 0.0585,
+      "radius": 0.100,
       "index": 1
     },
     {
       "node": "rightUpperLeg",
+      "capsuleEndBone": "RightLowerLeg",
       "offset": {
         "z": 0,
         "x": 0,
         "y": 0
       },
       "group": 0,
-      "radius": 0.0585,
+      "radius": 0.100,
       "index": 2
     },
     {

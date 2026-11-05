@@ -40,6 +40,7 @@ namespace LingChatXR.Editor
         public string Owner {get; private set;} = "待机";
         public string Target => side ? "B 侧方" : "A 前方";
         public string Status {get; private set;} = "就绪";
+        public string WorkerPhase=>!active?Status:!prepared?"准备固定动作":!ready?"正在加载 Core8 · "+Math.Max(0,(int)(Now-launched))+" 秒":Submitted==0?"等待首批生成帧":"已播放 "+Submitted+" 帧 ARDY";
         static double Now => Time.realtimeSinceStartupAsDouble;
         bool Valid => active && live && live.Ready && live.Avatar==avatar && live.Interaction==core &&
                       core.State==PetState.Idle && core.PlaneConfirmed && core.Generation==generation;
@@ -52,26 +53,21 @@ namespace LingChatXR.Editor
             active=true; int startEpoch=++epoch;
             try
             {
+                live.Locomotion.Cancel(true);
+                priorEnabled=core.AutonomousEnabled;
+                live.Locomotion.ManualStep=true;
                 generation=core.Generation;
                 bool loaded=await avatar.Motions.PrepareLocomotion();
-                if(!Valid || startEpoch!=epoch) return;
+                if(startEpoch!=epoch)return;
+                if(!Valid){End("准备期间角色或空间发生变化");return;}
                 if(!loaded) throw new InvalidOperationException(avatar.Motions.LocomotionStatus);
-                live.Locomotion.Cancel(true);
-                live.Locomotion.ManualStep=true;
-                avatar.Motions.EndWelcome();
-                if(!avatar.Motions.BeginLocomotion()) throw new InvalidOperationException("身体控制者忙，请先停止当前动作");
-                acquired=true;
-                core.SetAutonomousEnabled(true); generation=core.Generation;
-                basis=live.SpatialRotation; center=FeiyuPreview.ToUnity(core.PlaneCenter);
-                avatar.Motions.SpatialControlRevoked+=Revoke;
-                avatar.FreezePresentation=true;
                 leg=Vector3.Distance(Bone(HumanBodyBones.LeftUpperLeg).position,Bone(HumanBodyBones.LeftLowerLeg).position)
                     +Vector3.Distance(Bone(HumanBodyBones.LeftLowerLeg).position,Bone(HumanBodyBones.LeftFoot).position);
                 speed=leg*avatar.Motions.MovementSpeedPerLeg("walk");
                 EnsureWorker();
                 prepared=true; phase=0; nextTick=Now;
                 streaming=false; side=false; changed=0; Submitted=Underruns=0; FirstNewFrameMs=0;
-                Status="固定步行准备接步"; Owner="固定走路";
+                Status="等待 Core8 就绪"; Owner="角色待机";
             }
             catch(Exception e){End(e.Message);}
         }
@@ -92,9 +88,11 @@ namespace LingChatXR.Editor
                 string dir=Path.Combine(cache,"runtime",variable);
                 Directory.CreateDirectory(dir); info.EnvironmentVariables[variable]=dir;
             }
+            string errorPath=Path.Combine(cache,"last-worker-error.txt");
+            File.WriteAllText(errorPath,"");
             worker=new Process{StartInfo=info};
             worker.OutputDataReceived+=(s,e)=>{if(e.Data?.StartsWith("YUCHAT ")==true) replies.Enqueue(e.Data.Substring(7));};
-            worker.ErrorDataReceived+=(s,e)=>{if(e.Data!=null) System.Diagnostics.Trace.WriteLine(e.Data);};
+            worker.ErrorDataReceived+=(s,e)=>{if(e.Data!=null)try{File.AppendAllText(errorPath,e.Data+Environment.NewLine);}catch(IOException){}};
             worker.Start();launched=Now;worker.BeginOutputReadLine();worker.BeginErrorReadLine();
         }
 
@@ -112,20 +110,28 @@ namespace LingChatXR.Editor
                 if(active && !Valid) End("空间或角色代次已变化");
                 while(replies.TryDequeue(out string line)) Accept(JObject.Parse(line));
                 if(!Valid || !prepared) return;
-                if(worker.HasExited) throw new IOException("ARDY 进程已退出");
+                if(worker.HasExited) throw new IOException("Core8 进程退出（"+worker.ExitCode+"），见 .cache/ardy-horizon8/last-worker-error.txt");
                 if(!ready && Now-launched>120) throw new TimeoutException("ARDY 试载超时");
+                if(!ready)return;
+                if(!acquired)
+                {
+                    avatar.Motions.EndWelcome();
+                    if(!avatar.Motions.BeginLocomotion())throw new InvalidOperationException("身体控制者忙，请先停止当前动作");
+                    acquired=true;
+                    core.SetAutonomousEnabled(true);generation=core.Generation;
+                    basis=live.SpatialRotation;center=FeiyuPreview.ToUnity(core.PlaneCenter);
+                    avatar.Motions.SpatialControlRevoked+=Revoke;
+                    avatar.FreezePresentation=true;
+                    Owner="固定走路";Status="采集 16 帧实际步态";
+                }
                 if(pending!=0 && Now-requested>12) throw new TimeoutException("ARDY 单步超时");
                 if(Now<nextTick) return;
                 nextTick=Math.Max(nextTick+.05,Now);
-                if(!streaming && ((!ready) || (pending==0 && history.Count<16)))
+                if(!streaming && pending==0 && history.Count<16)
                 {
                     avatar.Motions.SampleLocomotion("walk",phase);
-                    // 冷启动期间循环固定动作，服务就绪后再开始桌面位移。
-                    if(ready)
-                    {
-                        Vector3 next=FeiyuPreview.ToUnity(core.Position)+basis*Vector3.forward*(speed*.05f);
-                        if(!live.TryAutonomousPose(next,basis,generation)) throw new InvalidOperationException("前方缺少接步空间");
-                    }
+                    Vector3 next=Vector3.MoveTowards(FeiyuPreview.ToUnity(core.Position),TargetWorld(),speed*.05f);
+                    if(!live.TryAutonomousPose(next,basis,generation)) throw new InvalidOperationException("前方缺少接步空间");
                     avatar.Motions.Step(.05f); avatar.Instance.Runtime.Process();
                     Remember(CaptureRow());phase+=.05f;
                 }
@@ -136,6 +142,7 @@ namespace LingChatXR.Editor
                     Apply(row);
                     if(changed>0){FirstNewFrameMs=(Now-changed)*1000;changed=0;}
                     streaming=true; Submitted++; Owner="ARDY"; Status="接步中";
+                    if(Submitted==1)UnityEngine.Debug.Log("XR_ARDY_FIRST_FRAME model="+avatar.Package.model.sha256+" rttMs="+RoundTripMs.ToString("F0"));
                     Remember(CaptureRow());
                 }
                 else if(pending!=0) { Underruns++; Status="等待补帧"; }
@@ -143,6 +150,13 @@ namespace LingChatXR.Editor
                 if(ready && history.Count==16 && pending==0 && buffer.Count<=7) Request();
             }
             catch(Exception e){End(e.Message);}
+        }
+        void OnGUI()
+        {
+            if(!active)return;
+            // 只在主动开启的 PC 实验中显示，回到 Game 视图也能核对真实播放计数。
+            GUI.Box(new Rect(Mathf.Max(4,Screen.width-312),8,304,51),
+                Owner+"   /   "+Target+"\n"+WorkerPhase+"   ·   缓冲 "+Buffered);
         }
 
         static JArray V(Vector3 v)=>new JArray(v.x,v.y,v.z);
@@ -163,15 +177,20 @@ namespace LingChatXR.Editor
                 ["y"]=(hips.localPosition.y-baseHipsY)*hips.parent.lossyScale.y};
         }
         void Remember(JObject row){history.Enqueue(row);while(history.Count>16)history.Dequeue();}
+        Vector3 TargetWorld()
+        {
+            var plane=Quaternion.Euler(0,core.PlaneYawRadians*Mathf.Rad2Deg,0);
+            float extent=side?core.HalfWidth:core.HalfDepth;
+            float distance=Mathf.Min(extent*.72f,Mathf.Max(0,extent-core.RadiusMeters-.01f));
+            return center+plane*((side?Vector3.right:Vector3.forward)*distance);
+        }
         void Request()
         {
             if(!Valid || !ready || history.Count!=16 || pending!=0) return;
             var trail=history.Concat(buffer).ToArray();
             // 通常补帧接在已承诺播出的缓存尾部。改目标时缓存清空，只取已实际播放历史。
             var samples=new JArray(trail.Skip(trail.Length-16));
-            var plane=Quaternion.Euler(0,core.PlaneYawRadians*Mathf.Rad2Deg,0);
-            var dest=center+plane*(side?Vector3.right*core.HalfWidth*.70f:Vector3.forward*core.HalfDepth*.74f);
-            Vector3 local=Local(dest);
+            Vector3 local=Local(TargetWorld());
             int ticket=++serial;pending=ticket;requested=Now;
             var request=new JObject{["ticket"]=ticket,["seed"]=1000+serial,["frames"]=samples,["speed"]=speed,["leg"]=leg,["target"]=new JArray(local.x,local.z)};
             worker.StandardInput.WriteLine(request.ToString(Formatting.None));worker.StandardInput.Flush();

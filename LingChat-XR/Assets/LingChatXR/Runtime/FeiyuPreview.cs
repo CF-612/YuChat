@@ -335,10 +335,10 @@ namespace LingChatXR
             {
                 contactShadow?.SetPlane(center.y);
                 if(boundary!=null){boundary.enabled=true;var rotation=Quaternion.Euler(0,yawDegrees,0);boundary.SetPositions(new[]{center+rotation*new Vector3(-halfWidth,.003f,-halfDepth),center+rotation*new Vector3(halfWidth,.003f,-halfDepth),center+rotation*new Vector3(halfWidth,.003f,halfDepth),center+rotation*new Vector3(-halfWidth,.003f,halfDepth)});}
-                avatarRoot.SetActive(true);
                 message = "左键点桌面行走；按住头部抚摸；右键按住身体提起。";
                 ApplyState();
                 if(ExternalInput||!welcomeConsumed)FacePlayerOnce(previewCamera.transform.position);
+                avatarRoot.SetActive(true);
                 if(!welcomeConsumed){welcomeConsumed=true;_=WelcomeWhenVisible(avatar,Interaction.Generation);}
                 avatar.ResetSecondaryMotion();
             }
@@ -519,7 +519,21 @@ namespace LingChatXR
         }
 
         // XR 的短暂系统遮罩由 QuestEntry 暂停输入，不能让桌面预览再次清掉已确认平台。
-        private void OnApplicationFocus(bool focused) { if (!ExternalInput&&!focused) SimulateTrackingLoss(); }
+        private void OnApplicationFocus(bool focused)
+        {
+            if(ExternalInput||focused||!Ready)return;
+#if UNITY_EDITOR
+            // Game 和独立导演面板之间切换不改变虚拟桌面坐标；只释放失去鼠标的输入。
+            orbiting=false;
+            avatar.PointerContactHeld=false;
+            Interaction.EndTouch(MouseOwner);
+            if(Interaction.State==PetState.Held && Interaction.Holder==MouseOwner)
+                Interaction.ReleaseGrabWithDescent(MouseOwner,Interaction.Generation,Interaction.LastSafePosition);
+            ApplyState();
+#else
+            SimulateTrackingLoss();
+#endif
+        }
         private void OnApplicationPause(bool paused) { if (!ExternalInput&&paused) SimulateTrackingLoss(); }
         private void OnDisable() { CancelCharacterLoad();if (Ready && avatarRoot != null) SimulateTrackingLoss(); if (speech != null) speech.Stop(); }
 
