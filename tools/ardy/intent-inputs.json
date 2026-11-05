@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "upstream": "e706e27acc88070918308a10922b8f7174d0825e",
+  "checkpoint": "b2a1749ab60ffca324bff11ea3012d4d8e1ac90b",
+  "encoder": {
+    "llamaRevision": "8afb486c1db24fe5011ec46dfbe5b5dccdb575c2",
+    "baseRevision": "31474e395ada192e8ed1586db6be79fb3b70c9c0",
+    "adapterRevision": "baa8ebf04a1c2500e61288e7dad65e8ae42601a7",
+    "base": "McGill-NLP/LLM2Vec-Meta-Llama-3-8B-Instruct-mntp",
+    "adapter": "McGill-NLP/LLM2Vec-Meta-Llama-3-8B-Instruct-mntp-supervised",
+    "preprocessing": "official LLM2VecEncoder, raw prompt, batch_size=1, bfloat16",
+    "expectedShape": [
+      1,
+      4096
+    ],
+    "expectedDtype": "float32"
+  },
+  "intents": [
+    {
+      "id": "walk_casual",
+      "prompt": "A person walks forward casually at a relaxed pace.",
+      "fallback": "已有固定行走",
+      "stage": "first",
+      "file": "walk_casual.npy",
+      "status": "awaiting_external_encoding",
+      "sha256": null
+    },
+    {
+      "id": "sneak_forward",
+      "prompt": "A person moves forward quietly and sneakily with small cautious steps.",
+      "fallback": "已有固定行走",
+      "stage": "first",
+      "file": "sneak_forward.npy",
+      "status": "awaiting_external_encoding",
+      "sha256": null
+    },
+    {
+      "id": "excited_hop",
+      "prompt": "A person makes a small excited hop and settles naturally.",
+      "fallback": "当前待机",
+      "stage": "first",
+      "file": "excited_hop.npy",
+      "status": "awaiting_external_encoding",
+      "sha256": null
+    },
+    {
+      "id": "curious_approach",
+      "prompt": "A person approaches something with visible curiosity and cautious interest.",
+      "fallback": "已有固定行走",
+      "stage": "extension",
+      "file": "curious_approach.npy",
+      "status": "awaiting_external_encoding",
+      "sha256": null
+    },
+    {
+      "id": "playful_chase",
+      "prompt": "A person moves forward playfully as if chasing something interesting.",
+      "fallback": "已有固定跑步",
+      "stage": "extension",
+      "file": "playful_chase.npy",
+      "status": "awaiting_external_encoding",
+      "sha256": null
+    },
+    {
+      "id": "confused_search",
+      "prompt": "A person pauses and looks around in confusion, searching for something.",
+      "fallback": "当前待机",
+      "stage": "extension",
+      "file": "confused_search.npy",
+      "status": "awaiting_external_encoding",
+      "sha256": null
+    },
+    {
+      "id": "panic_backstep",
+      "prompt": "A person reacts in surprise and takes a quick nervous step backward.",
+      "fallback": "当前待机",
+      "stage": "extension",
+      "file": "panic_backstep.npy",
+      "status": "awaiting_external_encoding",
+      "sha256": null
+    },
+    {
+      "id": "celebrate",
+      "prompt": "A person celebrates happily with an energetic but compact body gesture.",
+      "fallback": "当前待机",
+      "stage": "extension",
+      "file": "celebrate.npy",
+      "status": "awaiting_external_encoding",
+      "sha256": null
+    }
+  ]
+}
