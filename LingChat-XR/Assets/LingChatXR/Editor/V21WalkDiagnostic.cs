@@ -5,6 +5,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Newtonsoft.Json.Linq;
+using LingChatXR.Chat;
+using UnityEngine.UIElements;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -66,19 +68,39 @@ namespace LingChatXR.Editor
             File.WriteAllText(Path.Combine(Output,"spring.json"),new JObject{["bones"]=new JArray(joints.Select(j=>j.name)),
                 ["configuredJoints"]=avatar.Physics.ConfiguredJointCount,["rows"]=rows}.ToString());
             live.Locomotion.Cancel(true);
-            CompareCoverage(live,config);
+            if(Environment.GetEnvironmentVariable("XR_SKIRT_SIDE")=="1") CheckCapsule();
+            else CompareCoverage(live,config);
             if(Environment.GetEnvironmentVariable("XR_V21_TEST_ARDY")!="1")yield break;
             live.Locomotion.Cancel(true);
             live.SendMessage("OnApplicationFocus",false);live.SendMessage("OnApplicationFocus",true);
             if(!live.Interaction.PlaneConfirmed)throw new Exception("编辑器窗口切换丢失桌面");
-            if(!EditorApplication.ExecuteMenuItem("YuChat/动作实验/直接试玩 ARDY 接步"))throw new Exception("菜单无法打开");
+            var view=Object.FindAnyObjectByType<XrChatView>();
+            var button=view.GetComponent<UIDocument>().rootVisualElement.Q<Button>("ardy-game-start");
+            void Click()
+            {
+                if(button==null || !button.enabledInHierarchy || button.worldBound.width<=0 ||
+                    button.panel.Pick(button.worldBound.center)!=button) throw new Exception("Game 按钮被挡住或不可用");
+                using(var evt=NavigationSubmitEvent.GetPooled()){evt.target=button;button.SendEvent(evt);}
+            }
+            live.ResetPlacement();
+            for(int i=0;i<8;i++)yield return null;
+            C0SettingsProbe.CaptureCombined(Path.Combine(Output,"Game-start.png"),view,live);
+            Click();
             ArdyPlaytest stream;
             while((stream=live.GetComponent<ArdyPlaytest>())==null)yield return null;
             var demoFrames=new JArray();
+            var poses=new List<(Dictionary<HumanBodyBones,Quaternion> pose,float y)>();
+            float initialHeight=avatar.Instance.Runtime.ControlRig.GetBoneTransform(HumanBodyBones.Hips).localPosition.y; int lastPose=-1;
             double demoStart=EditorApplication.timeSinceStartup, nextShot=0;
             void CaptureDemo()
             {
                 if(stream.Owner=="角色待机")return;
+                var skeleton=avatar.Instance.Runtime.ControlRig;
+                if(stream.Owner=="ARDY" && lastPose!=stream.Submitted){
+                    poses.Add((skeleton.Bones.ToDictionary(b=>b.Key,b=>b.Value.ControlBone.localRotation),
+                        skeleton.GetBoneTransform(HumanBodyBones.Hips).localPosition.y-initialHeight));
+                    lastPose=stream.Submitted;
+                }
                 double t=EditorApplication.timeSinceStartup-demoStart;
                 if(t<nextShot)return;nextShot=t+.12;
                 cam.transform.LookAt(FeiyuPreview.ToUnity(live.Interaction.Position)+Vector3.up*.12f);
@@ -92,12 +114,52 @@ namespace LingChatXR.Editor
             while(stream.Active && stream.Submitted<20){CaptureDemo();yield return null;}
             File.WriteAllText(Path.Combine(Output,"ardy.txt"),stream.Status+" frames="+stream.Submitted+" owner="+stream.Owner);
             if(stream.Submitted<12)throw new Exception(stream.Status);
-            stream.ChangeTarget();int before=stream.Submitted;
+            C0SettingsProbe.CaptureCombined(Path.Combine(Output,"Game-generated.png"),view,live);
+            Click();int before=stream.Submitted;
             while(stream.Active&&stream.Submitted<before+40){CaptureDemo();yield return null;}
             if(!stream.Active || stream.FirstNewFrameMs<=0)throw new Exception("切换目标未收到新帧："+stream.Status);
             File.AppendAllText(Path.Combine(Output,"ardy.txt")," B="+stream.FirstNewFrameMs+" ms frames="+stream.Submitted);
             File.WriteAllText(Path.Combine(Output,"demo-timeline.json"),demoFrames.ToString());
             stream.End();
+            if(Environment.GetEnvironmentVariable("XR_SKIRT_SIDE")!="1")yield break;
+            // 同一批实际 Core8 帧分别驱动两次，等待独立 Unity 帧完成蒙皮后再取侧面。
+            live.Locomotion.ManualStep=true;avatar.FreezePresentation=true;
+            var control=avatar.Instance.Runtime.ControlRig;
+            avatar.Instance.TryGetBoneTransform(HumanBodyBones.LeftUpperLeg,out var left);
+            avatar.Instance.TryGetBoneTransform(HumanBodyBones.RightUpperLeg,out var right);
+            foreach(var radius in new[]{0f,.035f,.055f})
+            {
+                var candidate=JsonUtility.FromJson<SpringPhysicsConfiguration>(JsonUtility.ToJson(config));
+                candidate.materials.Single(m=>m.id=="cloth").minimumContactRadius=radius;
+                avatar.Physics.ConfigureMaterials(candidate);player.SetSpatialAllowed(true);
+                if(!player.BeginLocomotion())throw new Exception("重播未取得控制权");
+                avatar.Physics.RequestReset();
+                for(int i=0;i<poses.Count;i++)
+                {
+                    player.SubmitLocomotionFrame(poses[i].pose,poses[i].y);
+                    player.Step(.05f);avatar.Instance.Runtime.Process();
+                    for(int settle=0;settle<3;settle++)yield return null;
+                    if(i%4!=0)continue;
+                    var middle=(left.position+right.position)*.5f;
+                    var axis=Vector3.ProjectOnPlane(control.GetBoneTransform(HumanBodyBones.Hips).right,Vector3.up).normalized;
+                    cam.orthographicSize=avatar.HeightMeters*.34f;
+                    cam.transform.position=middle+axis*.7f;cam.transform.LookAt(middle);
+                    LocomotionProbe.Capture(cam,$"replay-{Mathf.RoundToInt(radius*1000)}-{i:D2}");
+                }
+                player.EndLocomotion(true);
+            }
+            avatar.Physics.ConfigureMaterials(config);avatar.Physics.RequestReset();
+            avatar.FreezePresentation=false;live.Locomotion.ManualStep=false;
+        }
+        static void CheckCapsule()
+        {
+            var point=new Unity.Mathematics.float3(.05f,.7f,0);
+            var shape=new UniGLTF.SpringBoneJobs.Blittables.BlittableCollider(default,.1f,
+                new Unity.Mathematics.float3(0,1,0),UniGLTF.SpringBoneJobs.Blittables.BlittableColliderType.Capsule);
+            var logic=new UniGLTF.SpringBoneJobs.Blittables.BlittableJointImmutable(length:Unity.Mathematics.math.length(point));
+            if(!UniGLTF.SpringBoneJobs.SpringBoneCollision.TryCollide(logic,default,default,shape,default,1,
+                new Unity.Mathematics.float3(0,1,0),default,point,out var pushed) || pushed.x<=point.x)
+                throw new Exception("位于胶囊中段的裙骨端点未被推出");
         }
         static void CompareCoverage(FeiyuPreview live,SpringPhysicsConfiguration profile)
         {

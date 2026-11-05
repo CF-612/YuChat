@@ -43,12 +43,13 @@ namespace LingChatXR
     {
         public string id;
         public float rootStiffness=1, tipStiffness=1, gravity=1, drag=.65f;
-        public float rootAngle=90, tipAngle=90;
+        public float rootAngle=90, tipAngle=90, minimumContactRadius;
         public bool Valid => !string.IsNullOrEmpty(id) &&
             float.IsFinite(rootStiffness)&&rootStiffness>=0&&rootStiffness<=20 &&
             float.IsFinite(tipStiffness)&&tipStiffness>=0&&tipStiffness<=20 &&
             float.IsFinite(gravity)&&gravity>=0&&gravity<=5 &&
             float.IsFinite(drag)&&drag>=0&&drag<=1 &&
+            float.IsFinite(minimumContactRadius)&&minimumContactRadius>=0&&minimumContactRadius<=1 &&
             float.IsFinite(rootAngle)&&rootAngle>0&&rootAngle<=180 &&
             float.IsFinite(tipAngle)&&tipAngle>0&&tipAngle<=180;
     }

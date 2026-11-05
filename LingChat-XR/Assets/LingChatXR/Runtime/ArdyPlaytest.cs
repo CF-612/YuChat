@@ -29,6 +29,13 @@ namespace LingChatXR.Editor
         int epoch, generation, serial, pending;
         bool ready, active, prepared, acquired, priorManual, priorEnabled, priorFreeze, streaming, side;
         public bool Active => active;
+        public static void StartOnTable(FeiyuPreview preview)
+        {
+            if(preview==null||!preview.Ready||preview.ExternalInput)return;
+            if(!preview.Interaction.PlaneConfirmed&&!preview.Place(Vector3.zero))return;
+            var demo=preview.GetComponent<ArdyPlaytest>()??preview.gameObject.AddComponent<ArdyPlaytest>();
+            demo.Begin(preview);
+        }
         public bool Pending => pending != 0;
         public int Buffered => buffer.Count;
         public int Submitted {get; private set;}
@@ -151,14 +158,6 @@ namespace LingChatXR.Editor
             }
             catch(Exception e){End(e.Message);}
         }
-        void OnGUI()
-        {
-            if(!active)return;
-            // 只在主动开启的 PC 实验中显示，回到 Game 视图也能核对真实播放计数。
-            GUI.Box(new Rect(Mathf.Max(4,Screen.width-312),8,304,51),
-                Owner+"   /   "+Target+"\n"+WorkerPhase+"   ·   缓冲 "+Buffered);
-        }
-
         static JArray V(Vector3 v)=>new JArray(v.x,v.y,v.z);
         static Vector3 Vector(JToken v)=>new Vector3((float)v[0],(float)v[1],(float)v[2]);
         Vector3 Local(Vector3 world)=>Quaternion.Inverse(basis)*(world-center);

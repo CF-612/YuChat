@@ -21,6 +21,9 @@ namespace LingChatXR.Chat
         private VisualElement historyPanel, content, dialogue;
         private Button expand;
         private VisualElement walkBar;private Label walkHint;private Button walkStop;
+#if UNITY_EDITOR
+        Button ardyButton;
+#endif
         public bool DialogueCollapsed { get; private set; }
         public XrSettingsView Settings { get; private set; }
         private XrSizeEditView sizeEdit;
@@ -113,7 +116,23 @@ namespace LingChatXR.Chat
             MotionWindow.VisibilityChanged=open=>Settings.Root.style.visibility=open?Visibility.Hidden:Visibility.Visible;
             sizeEdit=new XrSizeEditView(root);
             walkBar=Element(root,"walk-toolbar");walkHint=Text(walkBar,"点桌面空白处行走","walk-hint");
-            walkStop=Nav(walkBar,"停下","stop",()=>FindAnyObjectByType<FeiyuPreview>()?.Locomotion?.Cancel());walkBar.style.display=DisplayStyle.None;
+            walkStop=Nav(walkBar,"停下","stop",()=>{
+                var scene=FindAnyObjectByType<FeiyuPreview>();
+#if UNITY_EDITOR
+                var demo=scene?.GetComponent<LingChatXR.Editor.ArdyPlaytest>();
+                if(demo!=null && demo.Active){demo.End();Destroy(demo);return;}
+#endif
+                scene?.Locomotion?.Cancel();
+            });walkBar.style.display=DisplayStyle.None;
+#if UNITY_EDITOR
+            ardyButton=new Button(()=>{
+                var scene=FindAnyObjectByType<FeiyuPreview>();
+                var demo=scene?.GetComponent<LingChatXR.Editor.ArdyPlaytest>();
+                if(demo!=null && demo.Active)demo.ChangeTarget();
+                else LingChatXR.Editor.ArdyPlaytest.StartOnTable(scene);
+            }){text="测试 ARDY 行走",name="ardy-game-start"};
+            ardyButton.AddToClassList("settings-primary");walkBar.Add(ardyButton);
+#endif
             root.RegisterCallback<GeometryChangedEvent>(_ => {
                 bool narrow = root.resolvedStyle.width < 1100;
                 content.style.left = content.style.right = Length.Percent(narrow ? 6 : 15);
@@ -221,8 +240,24 @@ namespace LingChatXR.Chat
             float elapsed=Time.unscaledTime-bubbleStart;
             var p=FindAnyObjectByType<FeiyuPreview>();
             bool walkVisible=p!=null&&p.Ready&&p.Interaction.PlaneConfirmed&&!modal;
+#if UNITY_EDITOR
+            if(p!=null && !p.ExternalInput && p.Ready&&!modal)walkVisible=true;
+#endif
             walkBar.style.display=walkVisible?DisplayStyle.Flex:DisplayStyle.None;
             if(walkVisible){walkHint.text=p.Locomotion?.Status??"点桌面空白处行走";walkStop.style.display=p.Locomotion!=null&&p.Locomotion.Active?DisplayStyle.Flex:DisplayStyle.None;}
+#if UNITY_EDITOR
+            if(walkVisible)
+            {
+                ardyButton.style.display=p.ExternalInput?DisplayStyle.None:DisplayStyle.Flex;
+                var demo=p.GetComponent<LingChatXR.Editor.ArdyPlaytest>();
+                bool testing=demo!=null&&demo.Active;
+                ardyButton.text=!testing?"测试 ARDY 行走":demo.Submitted==0?"准备生成中":demo.Target=="A 前方"?"改为侧方目标":"改为前方目标";
+                ardyButton.SetEnabled(testing?demo.Submitted>0:(!p.Interaction.PlaneConfirmed || p.Interaction.State==Core.PetState.Idle));
+                if(testing){walkHint.text=demo.WorkerPhase;walkStop.style.display=DisplayStyle.Flex;}
+                else if(demo!=null)walkHint.text=demo.Status;
+                else if(!p.Interaction.PlaneConfirmed)walkHint.text="点击右侧按钮自动放置并试玩";
+            }
+#endif
             bool visible=controller.Thinking&&elapsed<2&&p!=null&&p.Ready&&p.Interaction.PlaneConfirmed&&thinkingFrames.Length>0;
             bubble.style.display=visible?DisplayStyle.Flex:DisplayStyle.None;
             if(!visible)return;

@@ -76,22 +76,9 @@ namespace UniGLTF.SpringBoneJobs
                 // head側半球の球判定
                 return TryResolveSphereCollision(joint, collider, worldPosition, headTransform, maxColliderScale, logic, nextTail, out newNextTail);
             }
-            var P = math.normalizesafe(direction);
-            var Q = headTransform.position - worldPosition;
-            var dot = math.dot(P, Q);
-            if (dot <= 0)
-            {
-                // head側半球の球判定
-                return TryResolveSphereCollision(joint, collider, worldPosition, headTransform, maxColliderScale, logic, nextTail, out newNextTail);
-            }
-            if (dot >= math.length(direction))
-            {
-                // tail側半球の球判定
-                return TryResolveSphereCollision(joint, collider, worldTail, headTransform, maxColliderScale, logic, nextTail, out newNextTail);
-            }
-
-            // head-tail上の m_transform.position との最近点
-            var p = worldPosition + P * dot;
+            // 对参与碰撞的预测端点取胶囊轴上的最近点。骨根可能位于完全不同的轴段。
+            var t = math.saturate(math.dot(nextTail - worldPosition, direction) / math.lengthsq(direction));
+            var p = worldPosition + direction * t;
             return TryResolveSphereCollision(joint, collider, p, headTransform, maxColliderScale, logic, nextTail, out newNextTail);
         }
 

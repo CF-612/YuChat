@@ -79,7 +79,7 @@ namespace LingChatXR
                     float t=chain.Joints.Count<=1?0:(float)i/(chain.Joints.Count-1);
                     bool authored=b.anglelimitType!=AnglelimitTypes.None;
                     materials[joint]=new BlittableJointMutable(Mathf.Lerp(material.rootStiffness,material.tipStiffness,t),material.gravity,
-                        new Unity.Mathematics.float3(0,-1,0),material.drag,b.radius,
+                        new Unity.Mathematics.float3(0,-1,0),material.drag,Mathf.Max(material.minimumContactRadius,b.radius),
                         authored?(float)b.anglelimitType:(float)AnglelimitTypes.Cone,
                         authored?b.anglelimit1:Mathf.Lerp(material.rootAngle,material.tipAngle,t)*Mathf.Deg2Rad,b.anglelimit2,b.anglelimitOffset);
                 }

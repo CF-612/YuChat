@@ -104,9 +104,7 @@ namespace LingChatXR.Editor
         }
         internal static void StartArdy(FeiyuPreview live)
         {
-            if(!live.Interaction.PlaneConfirmed && !live.Place(Vector3.zero))return;
-            var demo=live.GetComponent<ArdyPlaytest>()??live.gameObject.AddComponent<ArdyPlaytest>();
-            demo.Begin(live);
+            ArdyPlaytest.StartOnTable(live);
         }
         void OnGUI(){
             if(ardyOnly)

@@ -93,6 +93,7 @@
   "materials": [
     {
       "id": "cloth",
+      "minimumContactRadius": 0.035,
       "drag": 0.7,
       "tipAngle": 100,
       "rootAngle": 70,
