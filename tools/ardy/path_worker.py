@@ -19,7 +19,7 @@ def generate(model, request):
     history, scale = make_history(model.motion_rep, request)
     first_hips = np.array(frames[0]["hips"])
     target = (np.array(request["target"])-first_hips[[0,2]]) * [-scale,scale]
-    future = sample(model,history,target,speed*scale,request["seed"],10)
+    future = sample(model,history,target,speed*scale,request["seed"],6)
     result = decode(model.motion_rep,future)
     previous = model.motion_rep.unnormalize(history)[0,-1,:3].cpu().numpy() @ MIRROR
     last = frames[-1]

@@ -120,6 +120,37 @@ namespace LingChatXR.Editor
             if(!stream.Active || stream.FirstNewFrameMs<=0)throw new Exception("切换目标未收到新帧："+stream.Status);
             File.AppendAllText(Path.Combine(Output,"ardy.txt")," B="+stream.FirstNewFrameMs+" ms frames="+stream.Submitted);
             File.WriteAllText(Path.Combine(Output,"demo-timeline.json"),demoFrames.ToString());
+            if(Environment.GetEnvironmentVariable("XR_ARDY_STANCE")=="1")
+            {
+                double cold=stream.FirstFrameSeconds;
+                stream.End();
+                double settleUntil=EditorApplication.timeSinceStartup+.7;while(EditorApplication.timeSinceStartup<settleUntil)yield return null;
+                if(avatar.FreezePresentation||player.LocomotionActive)throw new Exception("停止后没有回到角色待机");
+                LocomotionProbe.Capture(cam,"stopped-idle");
+                Click();while(stream.Active && stream.Submitted<1)yield return null;
+                if(!stream.Active)throw new Exception(stream.Status);
+                double warm=stream.FirstFrameSeconds;
+                float maxTilt=0;
+                double until=EditorApplication.timeSinceStartup+32;while(stream.Active && EditorApplication.timeSinceStartup<until){
+                    avatar.Instance.TryGetBoneTransform(HumanBodyBones.Hips,out var hips);
+                    avatar.Instance.TryGetBoneTransform(HumanBodyBones.Head,out var head);
+                    maxTilt=Mathf.Max(maxTilt,Vector3.Angle(head.position-hips.position,Vector3.up));
+                    yield return null;
+                }
+                File.WriteAllText(Path.Combine(Output,"stance.txt"),$"cold={cold:F2}s warm={warm:F2}s tilt={maxTilt:F1} end={stream.Status} submitted={stream.Submitted} underruns={stream.Underruns}");
+                if(stream.Active || !stream.Status.Contains("待机") || maxTilt>32)throw new Exception("未稳定走到停止状态："+stream.Status);
+                settleUntil=EditorApplication.timeSinceStartup+.7;while(EditorApplication.timeSinceStartup<settleUntil)yield return null;
+                Vector3 idleCenter=FeiyuPreview.ToUnity(live.Interaction.Position)+Vector3.up*avatar.HeightMeters*.5f;
+                cam.transform.position=idleCenter+live.SpatialRotation*new Vector3(.32f,.06f,.5f);
+                cam.transform.LookAt(idleCenter);
+                LocomotionProbe.Capture(cam,"arrival-idle");
+                if(avatar.FreezePresentation||player.LocomotionActive)throw new Exception("到达后未恢复待机");
+                Click();while(stream.Active&&!stream.Pending)yield return null;
+                if(!live.Interaction.BeginGrab("stance-probe",out int grab))throw new Exception("生成期间无法提起");
+                live.RefreshSpatialState();
+                if(stream.Active||avatar.Motions.LocomotionOwned||stream.Buffered!=0)throw new Exception("抓取未及时中断");
+                yield break;
+            }
             stream.End();
             if(Environment.GetEnvironmentVariable("XR_SKIRT_SIDE")!="1")yield break;
             // 同一批实际 Core8 帧分别驱动两次，等待独立 Unity 帧完成蒙皮后再取侧面。

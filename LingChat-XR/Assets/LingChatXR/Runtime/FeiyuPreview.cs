@@ -120,6 +120,9 @@ namespace LingChatXR
 
         private async void Start()
         {
+#if UNITY_EDITOR
+            LingChatXR.Editor.ArdyPlaytest.PrewarmForReturnVisit(this);
+#endif
             Locomotion=gameObject.AddComponent<PetLocomotion>();Locomotion.Configure(this);
             lifetime = lifetime ?? new CancellationTokenSource();
             speech = FindAnyObjectByType<Chat.XrChatController>()?.Voice;

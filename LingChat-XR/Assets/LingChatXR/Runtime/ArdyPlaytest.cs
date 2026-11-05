@@ -25,15 +25,32 @@ namespace LingChatXR.Editor
         Quaternion basis;
         Vector3 center;
         float leg,speed,phase;
+        // 使用当前普通走路的实际控制骨姿态作为直立参考，保留生成的转向和步态。
+        static readonly HumanBodyBones[] Trunk={HumanBodyBones.Hips,HumanBodyBones.Spine,HumanBodyBones.Chest,HumanBodyBones.UpperChest,HumanBodyBones.Neck,HumanBodyBones.Head};
+        readonly Dictionary<HumanBodyBones,float> seedTilt=new();
+        double started;
+        float closestGoal;
+        int unproductiveFrames;
+        public double FirstFrameSeconds {get; private set;}
         double nextTick,requested,changed,launched;
         int epoch, generation, serial, pending;
         bool ready, active, prepared, acquired, priorManual, priorEnabled, priorFreeze, streaming, side;
         public bool Active => active;
+        const string PrewarmKey="YuChat.ArdyUsedInEditorSession";
+        public static void PrewarmForReturnVisit(FeiyuPreview preview)
+        {
+            if(preview.ExternalInput || preview.gameObject.scene.name!="FeiyuPreview" ||
+                !UnityEditor.SessionState.GetBool(PrewarmKey,false))return;
+            var demo=preview.GetComponent<ArdyPlaytest>()??preview.gameObject.AddComponent<ArdyPlaytest>();
+            try{demo.EnsureWorker();}
+            catch(Exception e){demo.Status="Core8 预加载失败："+e.Message;}
+        }
         public static void StartOnTable(FeiyuPreview preview)
         {
             if(preview==null||!preview.Ready||preview.ExternalInput)return;
             if(!preview.Interaction.PlaneConfirmed&&!preview.Place(Vector3.zero))return;
             var demo=preview.GetComponent<ArdyPlaytest>()??preview.gameObject.AddComponent<ArdyPlaytest>();
+            UnityEditor.SessionState.SetBool(PrewarmKey,true);
             demo.Begin(preview);
         }
         public bool Pending => pending != 0;
@@ -57,13 +74,14 @@ namespace LingChatXR.Editor
             if (active || !preview || !preview.Ready || preview.Interaction.State!=PetState.Idle) return;
             live=preview; avatar=live.Avatar; core=live.Interaction;
             priorManual=live.Locomotion.ManualStep; priorEnabled=core.AutonomousEnabled; priorFreeze=avatar.FreezePresentation;
-            active=true; int startEpoch=++epoch;
+            active=true; Submitted=0; started=Now; FirstFrameSeconds=0; seedTilt.Clear(); history.Clear(); buffer.Clear(); int startEpoch=++epoch;
             try
             {
                 live.Locomotion.Cancel(true);
                 priorEnabled=core.AutonomousEnabled;
                 live.Locomotion.ManualStep=true;
                 generation=core.Generation;
+                EnsureWorker();
                 bool loaded=await avatar.Motions.PrepareLocomotion();
                 if(startEpoch!=epoch)return;
                 if(!Valid){End("准备期间角色或空间发生变化");return;}
@@ -71,7 +89,8 @@ namespace LingChatXR.Editor
                 leg=Vector3.Distance(Bone(HumanBodyBones.LeftUpperLeg).position,Bone(HumanBodyBones.LeftLowerLeg).position)
                     +Vector3.Distance(Bone(HumanBodyBones.LeftLowerLeg).position,Bone(HumanBodyBones.LeftFoot).position);
                 speed=leg*avatar.Motions.MovementSpeedPerLeg("walk");
-                EnsureWorker();
+
+                closestGoal=float.PositiveInfinity;unproductiveFrames=0;
                 prepared=true; phase=0; nextTick=Now;
                 streaming=false; side=false; changed=0; Submitted=Underruns=0; FirstNewFrameMs=0;
                 Status="等待 Core8 就绪"; Owner="角色待机";
@@ -107,6 +126,7 @@ namespace LingChatXR.Editor
         {
             if(!Valid || !prepared) return;
             side=!side; ++epoch; pending=0; buffer.Clear(); changed=Now; FirstNewFrameMs=0;
+            closestGoal=float.PositiveInfinity;unproductiveFrames=0;
             Status="按已播放历史改目标"; Request();
         }
 
@@ -140,17 +160,42 @@ namespace LingChatXR.Editor
                     Vector3 next=Vector3.MoveTowards(FeiyuPreview.ToUnity(core.Position),TargetWorld(),speed*.05f);
                     if(!live.TryAutonomousPose(next,basis,generation)) throw new InvalidOperationException("前方缺少接步空间");
                     avatar.Motions.Step(.05f); avatar.Instance.Runtime.Process();
-                    Remember(CaptureRow());phase+=.05f;
+                    var upright=Quaternion.identity;
+                    foreach(var bone in Trunk){
+                        var part=Bone(bone);if(part==null)continue;
+                        upright*=part.localRotation;
+                        seedTilt.TryGetValue(bone,out var prev);
+                        seedTilt[bone]=Mathf.Max(prev,Vector3.Angle(Vector3.up,upright*Vector3.up));
+                    }
+                    var sample=CaptureRow();
+                    float y=(float)sample["y"];
+                    if(history.Count==0)seedMinY=seedMaxY=y;
+                    seedMinY=Mathf.Min(seedMinY,y);seedMaxY=Mathf.Max(seedMaxY,y);
+                    Remember(sample);
+                    phase+=.05f;
                 }
                 else if(buffer.Count>0)
                 {
                     JObject row=buffer.Dequeue();
                     if((int)row["epoch"]!=epoch || !Valid) {Rejected++;return;}
+                    Vector3 from=FeiyuPreview.ToUnity(core.Position);
                     Apply(row);
                     if(changed>0){FirstNewFrameMs=(Now-changed)*1000;changed=0;}
                     streaming=true; Submitted++; Owner="ARDY"; Status="接步中";
                     if(Submitted==1)UnityEngine.Debug.Log("XR_ARDY_FIRST_FRAME model="+avatar.Package.model.sha256+" rttMs="+RoundTripMs.ToString("F0"));
                     Remember(CaptureRow());
+                    if(Submitted==1)FirstFrameSeconds=Now-started;
+                    Vector3 goal=TargetWorld(),position=FeiyuPreview.ToUnity(core.Position);
+                    Vector3 pass=position-from;
+                    float t=Mathf.Clamp01(Vector3.Dot(goal-from,pass)/Mathf.Max(pass.sqrMagnitude,1e-10f));
+                    if(Vector3.Distance(goal,from+pass*t)<Mathf.Max(core.RadiusMeters*.28f,speed*.065f))
+                    {
+                        End("已到达 · 回到待机");
+                        return;
+                    }
+                    float distance=Vector3.Distance(position,goal);
+                    if(distance<closestGoal-leg*.025f){closestGoal=distance;unproductiveFrames=0;}
+                    else if(++unproductiveFrames>=50){End("未继续接近目标 · 回到待机");return;}
                 }
                 else if(pending!=0) { Underruns++; Status="等待补帧"; }
                 // 试玩时端到端往返约 0.3 秒。八帧中消费一帧即预取，余七帧提供 350 ms 裕量。
@@ -161,7 +206,7 @@ namespace LingChatXR.Editor
         static JArray V(Vector3 v)=>new JArray(v.x,v.y,v.z);
         static Vector3 Vector(JToken v)=>new Vector3((float)v[0],(float)v[1],(float)v[2]);
         Vector3 Local(Vector3 world)=>Quaternion.Inverse(basis)*(world-center);
-        float baseHipsY;
+        float baseHipsY,seedMinY,seedMaxY;
         JObject CaptureRow()
         {
             Transform hips=Bone(HumanBodyBones.Hips);
@@ -206,7 +251,33 @@ namespace LingChatXR.Editor
             pending=0;RoundTripMs=(Now-requested)*1000;
             if(answer["error"]!=null) throw new InvalidOperationException((string)answer["error"]);
             if(!(answer["rows"] is JArray rows) || rows.Count!=8) throw new InvalidDataException("未来帧数量错误");
-            foreach(JObject row in rows){row["epoch"]=epoch;buffer.Enqueue(row);}
+            foreach(JObject row in rows)
+            {
+                var pose=(JObject)row["pose"];
+                var parent=Quaternion.identity;
+                foreach(var bone in Trunk)
+                {
+                    var q=pose[bone.ToString()];
+                    if(q==null || !seedTilt.TryGetValue(bone,out float reference))continue;
+                    var local=new Quaternion((float)q[0],(float)q[1],(float)q[2],(float)q[3]).normalized;
+                    var world=parent*local;
+                    var up=world*Vector3.up;
+                    var allowed=Mathf.Clamp(reference+6,10,24);
+                    var tilt=Vector3.Angle(up,Vector3.up);
+                    if(tilt>allowed){
+                        var correction=Quaternion.Slerp(Quaternion.identity,Quaternion.FromToRotation(up,Vector3.up),1-allowed/tilt);
+                        world=correction*world;
+                        local=Quaternion.Inverse(parent)*world;
+                        pose[bone.ToString()]=new JArray(local.x,local.y,local.z,local.w);
+                    }
+                    parent=world;
+                }
+                float rawY=(float)row["y"];
+                float y=Mathf.Clamp(rawY,seedMinY-leg*.04f,seedMaxY+leg*.04f);
+                row["y"]=y;
+                row["hips"][1]=(float)row["hips"][1]+y-rawY;
+                row["epoch"]=epoch;buffer.Enqueue(row);
+            }
         }
         void Apply(JObject row)
         {
@@ -229,7 +300,7 @@ namespace LingChatXR.Editor
             if(acquired && avatar) avatar.Motions.SpatialControlRevoked-=Revoke;
             if(acquired && avatar && live && live.Avatar==avatar)
             {
-                avatar.Motions.EndLocomotion(true); avatar.FreezePresentation=priorFreeze;
+                avatar.Motions.EndLocomotion(core.State!=PetState.Idle); avatar.FreezePresentation=priorFreeze;
                 core.SetAutonomousEnabled(priorEnabled);
             }
             if(live && live.Locomotion) live.Locomotion.ManualStep=priorManual;

@@ -120,7 +120,7 @@ namespace LingChatXR.Chat
                 var scene=FindAnyObjectByType<FeiyuPreview>();
 #if UNITY_EDITOR
                 var demo=scene?.GetComponent<LingChatXR.Editor.ArdyPlaytest>();
-                if(demo!=null && demo.Active){demo.End();Destroy(demo);return;}
+                if(demo!=null && demo.Active){demo.End();return;}
 #endif
                 scene?.Locomotion?.Cancel();
             });walkBar.style.display=DisplayStyle.None;

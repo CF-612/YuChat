@@ -98,7 +98,7 @@ namespace LingChatXR.Editor
                 EditorGUILayout.LabelField("生成进度",demo.WorkerPhase);
                 EditorGUILayout.LabelField("请求往返 / 缓冲",demo.RoundTripMs.ToString("0")+" ms / "+demo.Buffered+" 帧");
                 if(GUILayout.Button("切换前方 / 侧方目标")) demo.ChangeTarget();
-                if(GUILayout.Button("停止路径试玩")){demo.End();UnityEngine.Object.Destroy(demo);}
+                if(GUILayout.Button("停止路径试玩"))demo.End();
             }
             if(demo!=null) EditorGUILayout.LabelField(demo.Status);
         }
