@@ -26,6 +26,10 @@ namespace LingChatXR
                 for(int i=0;i<materials.Length;i++)
                 {
                     var source=materials[i];if(source==null)continue;
+                    // VRM 允许混用 glTF Standard 与 MToon；只映射 MToon 的材质契约。
+                    var shader=source.shader;
+                    if(shader==null || (shader.name!=MToon10Meta.UnityShaderName &&
+                                         shader.name!=MToon10Meta.UnityUrpShaderName)) continue;
                     if(!converted.TryGetValue(source,out var target))
                     {
                         var context=new MToon10Context(source);

@@ -153,6 +153,8 @@ namespace LingChatXR
 
         public async Task LoadAsync(string folder, float heightMeters, CancellationToken token, bool useAuthorPhysics = false, Action<string> progress = null, FeiyuAvatar sharedSource = null)
         {
+            using var importLifetime=CancellationTokenSource.CreateLinkedTokenSource(token,destroyCancellationToken,Application.exitCancellationToken);
+            token=importLifetime.Token;
             if (Instance != null) throw new InvalidOperationException("Replace an avatar by creating a new adapter instance.");
             using var importLease=sharedSource!=null?sharedSource.ResourcesForPreview().Acquire():null;
             UsesAuthorPhysics = useAuthorPhysics;
@@ -185,7 +187,7 @@ namespace LingChatXR
             VrmRuntimeShaders.Validate();
             Instance = importLease!=null?await importLease.Resources.ImportPreview(bytes,token):await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: true,
                 controlRigGenerationOption: ControlRigGenerationOption.Generate,
-                awaitCaller: new UniGLTF.RuntimeOnlyAwaitCaller(MotionPreviewMode ? .004f : .006f), ct: token);
+                awaitCaller: new ImportAwaitCaller(MotionPreviewMode ? .004f : .006f,token), ct: token);
             if (token.IsCancellationRequested || this == null)
             {
                 if (Instance != null) Destroy(Instance.gameObject);
