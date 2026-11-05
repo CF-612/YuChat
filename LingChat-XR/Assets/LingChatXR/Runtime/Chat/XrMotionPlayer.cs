@@ -139,11 +139,18 @@ namespace LingChatXR.Chat
 #if UNITY_EDITOR
             owner=="prototype" ||
 #endif
-            Preferences.Allowed(id) ||
+            owner=="scene-inspection" || Preferences.Allowed(id) ||
             (owner=="welcome" && id==WelcomeWave && !explicitPermissions);
         public Task<bool> Welcome() => Busy ? Task.FromResult(false) : PlayInternal(WelcomeWave,false,"welcome");
         public void EndWelcome(){CancelPending("welcome");if(bodyOwner=="welcome"&&action!=null)Stop(true);}
         public Task<bool> Play(string id)=>PlayInternal(id,false);
+        public Task<bool> InspectAction(string id)
+        {
+            CancelOwner("scene-inspection");
+            if(GrabbedActive || LocomotionActive || (Busy && bodyOwner!="scene-inspection"))return Task.FromResult(false);
+            return PlayInternal(id,false,"scene-inspection");
+        }
+        public void EndInspection()=>CancelOwner("scene-inspection");
         bool Compatible(XrMotionAsset a)=>a.poseLoop==null||(a.approvedModels!=null&&a.approvedModels.Contains(modelSha));
         static MotionRegion Regions(XrMotionAsset asset)
         {
@@ -164,7 +171,7 @@ namespace LingChatXR.Chat
                 if((Occupied&MotionRegion.Head)!=0){if(fromSpeech)return false;Stop();}
                 headId=id;headAge=0;headOwner=owner;Status="动作播放中 · "+asset.label;return true;
             }
-            if(asset.loop)return await SetIdle(id);
+            if(asset.loop && owner!="scene-inspection")return await SetIdle(id);
             int ticket=++generation;Loading=true;pendingOwner=owner;Status="正在准备动作…";
             try
             {

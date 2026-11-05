@@ -49,7 +49,7 @@ namespace LingChatXR.Editor
             var view = UnityEngine.Object.FindAnyObjectByType<XrChatView>();
             view.Settings.Open(2);
             for (int i=0;i<20;i++) yield return null;
-            var button = view.Settings.Root.Query<Button>().ToList().First(b=>b.text=="打开动作预览与素材库");
+            var button = view.Settings.Root.Query<Button>().ToList().First(b=>b.text=="场景角色检查 · 动作与表情");
             double start = EditorApplication.timeSinceStartup;
             // 通过真实 UI Toolkit 按钮事件进入，区别于上批直接调用 Open。
             using (var evt = NavigationSubmitEvent.GetPooled()) { evt.target=button; button.SendEvent(evt); }
@@ -60,7 +60,7 @@ namespace LingChatXR.Editor
                 ["labels"]=new JArray(view.MotionWindow.Root.Query<Label>().ToList().Select(x=>x.text))}.ToString());
             Check(view.MotionWindow.PreviewAvatar!=null,"ui-event-preview-ready-within-40s");
             var cached=view.MotionWindow.PreviewAvatar;view.MotionWindow.Close();
-            Check(cached!=null&&!cached.gameObject.activeInHierarchy,"closed-preview-pauses-cached-avatar");
+            Check(cached==live.Avatar&&cached.gameObject.activeInHierarchy,"closed-review-keeps-scene-avatar");
             double reopen=EditorApplication.timeSinceStartup;view.MotionWindow.Open();
             Check(view.MotionWindow.PreviewAvatar==cached&&!view.MotionWindow.Preparing,"reopen-reuses-model-without-import");
             File.WriteAllText(Path.Combine(Evidence,"preview-reopen.json"),new JObject{["seconds"]=EditorApplication.timeSinceStartup-reopen,["sameAvatar"]=view.MotionWindow.PreviewAvatar==cached}.ToString());

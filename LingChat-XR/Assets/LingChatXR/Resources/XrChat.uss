@@ -102,7 +102,8 @@
 .unity-scroller__low-button, .unity-scroller__high-button { display: none; }
 .unity-scroller .unity-base-slider__dragger { background-color: rgba(110,180,255,.3); border-width: 0; border-radius: 3px; }
 /* 复用 LingChat 动作预览的左模型、右操作布局与深色半透明面板。 */
-.motion-overlay { position: absolute; left: 0; top: 0; right: 0; bottom: 0; background-color: rgba(0,0,0,.68); padding: 26px 40px; }
+.motion-overlay { position: absolute; width: 37%; max-width: 460px; top: 16px; right: 12px; bottom: 16px; }
+.motion-overlay.review-on-left { left: 12px; right: auto; }
 .motion-window { flex-grow: 1; min-height: 0; flex-direction: row; background-color: rgb(20,30,44); border-radius: 16px; border-width: 1px; border-color: rgba(120,160,195,.4); overflow: hidden; }
 .motion-model { flex-grow: 1; min-width: 0; padding: 26px; }
 .motion-heading { flex-direction: row; align-items: center; }
@@ -110,7 +111,7 @@
 .motion-eyebrow { font-size: 11px; color: rgb(104,140,170); letter-spacing: 2px; }
 .motion-stage { flex-grow: 1; min-height: 0; margin-top: 12px; }
 .motion-camera-hint { font-size: 13px; color: rgb(146,172,195); -unity-text-align: middle-center; height: 32px; }
-.motion-aside { width: 410px; flex-shrink: 0; padding: 22px 22px 18px; border-left-width: 1px; border-left-color: rgba(130,170,200,.14); }
+.motion-aside { flex-grow: 1; min-width: 0; padding: 18px 16px; }
 .motion-tabs { flex-direction: row; margin-bottom: 12px; }
 .motion-tab { flex-grow: 1; height: 38px; border-width: 0; background-color: transparent; color: rgb(145,205,235); font-size: 16px; }
 .motion-tab:hover { background-color: rgba(121,217,255,.08); }

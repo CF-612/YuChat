@@ -106,7 +106,7 @@ namespace LingChatXR.Chat
         }
         void Interaction()
         {
-            Heading("互动与动作","从轻轻摸头，到一个招呼。先在独立窗口试播，再为当前角色开启动作。");
+            Heading("互动与动作","在桌面上的小肥鱼身上检查动作和表情，并管理她的动作许可。");
             var card=Box(body,"settings-card");Toggle(card,"角色视线跟随",interaction.gazeEnabled,v=>interaction.gazeEnabled=v,"settings-gaze");Toggle(card,"头部触摸反馈",interaction.touchEnabled,v=>interaction.touchEnabled=v,"settings-touch");
             var movement=new Slider("移动速度（倍）",.75f,3f){value=interaction.movementSpeed,showInputField=true,name="settings-movement-speed"};card.Add(movement);
             movement.RegisterValueChangedCallback(e=>{interaction.movementSpeed=e.newValue;Changed();});
@@ -114,7 +114,7 @@ namespace LingChatXR.Chat
             card.SetEnabled(preview!=null&&preview.Ready);
             var motion=Box(body,"settings-card");Label(motion,"动作风格与素材库","settings-card-title");
             Label(motion,"查看全部动作、切换待机、完整试播，并按用途与风格管理当前角色的使用许可。","settings-description");
-            Button(motion,"打开动作预览与素材库",()=>OpenMotions?.Invoke(),"settings-primary").SetEnabled(preview!=null&&preview.Ready);
+            Button(motion,"场景角色检查 · 动作与表情",()=>OpenMotions?.Invoke(),"settings-primary").SetEnabled(preview!=null&&preview.Ready);
             Label(body,"动作与播放速度跟随实际移动；原普通走路素材保留备用。","settings-description");
             save.SetEnabled(preview!=null&&preview.Ready&&!saving);
         }

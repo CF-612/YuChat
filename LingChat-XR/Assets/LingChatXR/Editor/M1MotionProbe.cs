@@ -100,9 +100,9 @@ namespace LingChatXR.Editor
                 Check(player.ActiveId=="wave_normal_right_661","speech-cancel-preserves-manual-owner-"+folder);
                 preferences.Save(avatar.Package.model.sha256);Check(XrMotionPreferences.Read(avatar.Package.model.sha256).Allowed("wave_normal_right_661"),"model-bound-motion-preferences-save-"+folder);
                 player.ApplyPreferences(new XrMotionPreferences{enabled=false});
-                // 独立窗口：原角色实例、空间、许可均不能因试播改变。
+                // 场景试播保留角色实例、空间和聊天许可。
                 view.MotionWindow.Open();while(view.MotionWindow.PreviewAvatar==null)yield return null;
-                var clone=view.MotionWindow.PreviewAvatar;Check(clone!=avatar&&preview.Avatar==avatar,"isolated-preview-avatar-"+folder);
+                var clone=view.MotionWindow.PreviewAvatar;Check(clone==avatar&&preview.Avatar==avatar,"scene-preview-avatar-"+folder);
                 view.MotionWindow.SelectAction("wave_normal_right_661",true);while(clone.Motions.Loading)yield return null;
                 frames=Frames(90);while(frames.MoveNext())yield return null;
                 view.CaptureTestUi(Path.Combine(Evidence,"motion-preview-"+folder+".png"));
@@ -114,7 +114,7 @@ namespace LingChatXR.Editor
                     view.MotionWindow.ShowLibrary();frames=Frames(12);while(frames.MoveNext())yield return null;view.CaptureTestUi(Path.Combine(Evidence,"motion-library.png"));
                 }
                 Check(!player.Preferences.enabled&&preview.Interaction.PlaneConfirmed,"preview-no-permission-or-placement-change-"+folder);
-                view.MotionWindow.Close();frames=Frames(10);while(frames.MoveNext())yield return null;Check(clone!=null&&!clone.gameObject.activeInHierarchy,"preview-pauses-bounded-cache-"+folder);
+                view.MotionWindow.Close();frames=Frames(10);while(frames.MoveNext())yield return null;Check(clone==avatar&&clone.gameObject.activeInHierarchy,"scene-avatar-survives-review-close-"+folder);
             }
             view.Settings.Open(2);var wait=Frames(15);while(wait.MoveNext())yield return null;view.CaptureTestUi(Path.Combine(Evidence,"settings-interaction.png"));view.Settings.Close();
             view.Settings.Open(2);wait=Frames(15);while(wait.MoveNext())yield return null;C0SettingsProbe.CaptureCombined(Path.Combine(Evidence,"settings-combined.png"),view,preview);view.Settings.Close();

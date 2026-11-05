@@ -20,6 +20,11 @@ namespace LingChatXR.XR
         public bool ComposerVisible=>composer!=null&&composer.gameObject.activeInHierarchy;
         public InputField ComposerInput=>draft; public Button ComposerSend=>composeSend;Text composeStatus,composeReply;GameObject shortcuts;GameObject header;Text heightValue;Canvas scaleFrame;RectTransform scaleHandle;
         Button earlierHistory;int historyPageRevision;
+        GameObject reviewPage;
+        FeiyuAvatar reviewAvatar;
+        Text reviewAction,reviewFace,reviewState;
+        string[] reviewExpressions=Array.Empty<string>();
+        int actionIndex,faceIndex;
         Canvas placementHud;Text placementInstruction;
         GameObject historyPage,pairPage;RectTransform historyContent;ScrollRect historyScroll;InputField messageInput,addressInput,codeInput;Button sendButton,pairButton,historyTab,pairTab;Text pairStatus;int page;string historySnapshot="";
         public InputField MessageInput=>messageInput;
@@ -129,7 +134,10 @@ namespace LingChatXR.XR
             palmSize=Button(rect,"调大小",16,68,96,60,()=>entry.SizeAdjustment.Begin(),false);
             palmPlace=Button(rect,"选桌面",122,68,96,60,()=>entry.EnvironmentSurfaces.BeginSelection(),false);
             palmWrite=Button(rect,"写消息",228,68,96,60,OpenComposer,false);
-            Button(rect,"对话记录",16,140,145,44,ShowHistory,false);Button(rect,"桌面工具",170,140,154,44,ShowSpace,false);
+            Button(rect,"历史",16,140,90,44,ShowHistory,false);
+            Button(rect,"角色检查",112,140,104,44,ShowReview,false);
+            Button(rect,"桌面工具",222,140,102,44,ShowSpace,false);
+            BuildReview((RectTransform)canvas.transform);
             canvas.transform.SetParent(PalmCanvas.transform,false);canvas.transform.localPosition=Vector3.zero;canvas.transform.localRotation=Quaternion.identity;canvas.transform.localScale=Vector3.one*.60f;
             placementHud.transform.SetParent(PalmCanvas.transform,false);placementHud.transform.localPosition=new Vector3(0,-134,0);placementHud.transform.localScale=Vector3.one*.56f;
             PalmMenu.handMenuUIGameObject=PalmCanvas.gameObject;PalmMenu.menuHandedness=HandMenu.MenuHandedness.Left;PalmMenu.interactionManager=entry.Interactions;
@@ -138,9 +146,64 @@ namespace LingChatXR.XR
         {
             space=showSpace;page=showSpace?2:0;RefreshPages();
         }
+        void BuildReview(RectTransform parent)
+        {
+            reviewPage=Group(parent,"场景角色检查",0,150,760,340);
+            var panel=(RectTransform)reviewPage.transform;
+            Label(panel,"场景角色检查",28,0,400,38,24,Ink);
+            reviewAction=Label(panel,"",28,45,704,32,18,Ink);
+            Button(panel,"上个动作",28,83,210,42,()=>CycleReview(false,-1),false);
+            Button(panel,"下个动作",252,83,210,42,()=>CycleReview(false,1),false);
+            Button(panel,"播放动作",476,83,256,42,()=>{
+                if(ReviewReady && reviewAvatar.Motions.Catalog.Length>actionIndex)
+                    _=reviewAvatar.Motions.InspectAction(reviewAvatar.Motions.Catalog[actionIndex].id);
+            });
+            reviewFace=Label(panel,"",28,144,704,36,18,Ink);
+            Button(panel,"−10",28,186,90,42,()=>CycleReview(true,-10),false);
+            Button(panel,"上个",128,186,110,42,()=>CycleReview(true,-1),false);
+            Button(panel,"下个",250,186,110,42,()=>CycleReview(true,1),false);
+            Button(panel,"+10",372,186,90,42,()=>CycleReview(true,10),false);
+            Button(panel,"显示表情",476,186,256,42,()=>{
+                if(ReviewReady && reviewExpressions.Length>0)reviewAvatar.InspectExpression(reviewExpressions[faceIndex]);
+            });
+            Button(panel,"恢复角色",28,252,210,44,StopReview,false);
+            reviewState=Label(panel,"",252,258,480,58,16,Muted);
+            reviewPage.SetActive(false);
+        }
+        bool ReviewReady=>reviewAvatar!=null && entry.Preview.Ready && reviewAvatar==entry.Preview.Avatar &&
+            entry.Preview.Interaction.State==Core.PetState.Idle;
+        public void ShowReview(){page=4;Expand();RefreshReview();}
+        void StopReview()
+        {
+            if(reviewAvatar==null)return;
+            reviewAvatar.EndExpressionInspection();reviewAvatar.Motions?.EndInspection();
+        }
+        void CycleReview(bool face,int step)
+        {
+            int count=face?reviewExpressions.Length:reviewAvatar?.Motions.Catalog.Length??0;
+            if(count==0)return;
+            int Shift(int i)=>((i+step)%count+count)%count;
+            if(face)faceIndex=Shift(faceIndex);else actionIndex=Shift(actionIndex);
+            RefreshReview();
+        }
+        void RefreshReview()
+        {
+            var current=entry.Preview.Ready?entry.Preview.Avatar:null;
+            if(current!=reviewAvatar)
+            {
+                StopReview();reviewAvatar=current;actionIndex=faceIndex=0;
+                reviewExpressions=current!=null?current.InspectionExpressions:Array.Empty<string>();
+            }
+            var catalog=current?.Motions.Catalog;
+            reviewAction.text=catalog?.Length>0?"动作 "+(actionIndex+1)+" / "+catalog.Length+"   "+catalog[actionIndex].label:"暂无动作";
+            reviewFace.text=reviewExpressions.Length>0?"表情 "+(faceIndex+1)+" / "+reviewExpressions.Length+"   "+reviewExpressions[faceIndex]:"暂无模型表情";
+            reviewState.text=!ReviewReady?"请先放稳小肥鱼":current.InspectedExpression!=null?"当前表情 · "+current.InspectedExpression:current.Motions.Status;
+        }
         void RefreshPages()
         {
             header.SetActive(true);dialogPage.SetActive(page==0);spacePage.SetActive(page==2);historyPage.SetActive(page==1);pairPage.SetActive(page==3);
+            if(reviewPage!=null)reviewPage.SetActive(page==4);
+            if(page!=4 && reviewAvatar!=null){StopReview();reviewAvatar=null;}
             Highlight(dialogTab,page==0);Highlight(historyTab,page==1);Highlight(spaceTab,page==2);Highlight(pairTab,page==3);
         }
         static void Highlight(Button tab,bool selected){tab.GetComponent<Image>().color=selected?new Color(.18f,.39f,.56f,.62f):Color.clear;}
@@ -149,10 +212,12 @@ namespace LingChatXR.XR
         public void ShowHistory(){page=1;RefreshPages();RefreshHistory();Expand();}
         public void ShowPairing(){page=3;RefreshPages();Expand();}
         public void Expand(){if(canvas==null)return;RefreshPages();canvas.gameObject.SetActive(true);if(shortcuts!=null)shortcuts.SetActive(false);}
-        public void Collapse(){if(entry.SizeAdjustment!=null&&entry.SizeAdjustment.Active){entry.SizeAdjustment.Cancel();return;}if(canvas!=null)canvas.gameObject.SetActive(false);if(shortcuts!=null)shortcuts.SetActive(true);}
+        public void Collapse(){if(entry.SizeAdjustment!=null&&entry.SizeAdjustment.Active){entry.SizeAdjustment.Cancel();return;}StopReview();reviewAvatar=null;if(canvas!=null)canvas.gameObject.SetActive(false);if(shortcuts!=null)shortcuts.SetActive(true);}
         void Update()
         {
             if(chat==null)return;
+            if(page==4 && canvas.gameObject.activeInHierarchy) RefreshReview();
+            else if(reviewAvatar!=null){StopReview();reviewAvatar=null;}
             if(composer!=null&&composer.gameObject.activeSelf)
             {
                 composeStatus.text=chat.Connected?chat.Status:"等待连接 PC · 草稿已保留";
@@ -388,6 +453,6 @@ namespace LingChatXR.XR
             if(filled)obj.AddComponent<QuestPanelGradient>();
             return button;
         }
-        void OnDestroy(){if(VoiceInput!=null)VoiceInput.Recognized-=Recognized;if(chat!=null){chat.Changed-=Refresh;chat.MessageAccepted-=Accepted;}if(canvas!=null)Destroy(canvas.gameObject);if(menuHost!=null)Destroy(menuHost);if(scaleFrame!=null)Destroy(scaleFrame.gameObject);if(composer!=null)Destroy(composer.gameObject);if(placementHud!=null)Destroy(placementHud.gameObject);}
+        void OnDestroy(){StopReview();if(VoiceInput!=null)VoiceInput.Recognized-=Recognized;if(chat!=null){chat.Changed-=Refresh;chat.MessageAccepted-=Accepted;}if(canvas!=null)Destroy(canvas.gameObject);if(menuHost!=null)Destroy(menuHost);if(scaleFrame!=null)Destroy(scaleFrame.gameObject);if(composer!=null)Destroy(composer.gameObject);if(placementHud!=null)Destroy(placementHud.gameObject);}
     }
 }

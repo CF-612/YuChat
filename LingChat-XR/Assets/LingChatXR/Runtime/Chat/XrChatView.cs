@@ -109,7 +109,8 @@ namespace LingChatXR.Chat
             historyPanel.style.display = DisplayStyle.None;
             Settings=new XrSettingsView(root,controller);
             MotionWindow=new XrMotionWindow(root);
-            Settings.OpenMotions=MotionWindow.Open;MotionWindow.LeaveSettings=Settings.Close;
+            Settings.OpenMotions=MotionWindow.Open;
+            MotionWindow.VisibilityChanged=open=>Settings.Root.style.visibility=open?Visibility.Hidden:Visibility.Visible;
             sizeEdit=new XrSizeEditView(root);
             walkBar=Element(root,"walk-toolbar");walkHint=Text(walkBar,"点桌面空白处行走","walk-hint");
             walkStop=Nav(walkBar,"停下","stop",()=>FindAnyObjectByType<FeiyuPreview>()?.Locomotion?.Cancel());walkBar.style.display=DisplayStyle.None;
@@ -238,7 +239,8 @@ namespace LingChatXR.Chat
             if (active == null || active.document.rootVisualElement.panel == null) return false;
             var panel = active.document.rootVisualElement.panel;
             Vector2 p = RuntimePanelUtils.ScreenToPanel(panel, new Vector2(mouse.x, Screen.height - mouse.y));
-            bool hit=(!active.DialogueCollapsed&&active.content.worldBound.Contains(p)) || VisibleHit(active.walkBar,p) || VisibleHit(active.expand,p) || VisibleHit(active.historyPanel, p) || active.Settings.IsOpen || active.MotionWindow.IsOpen || active.sizeEdit.Active;
+            if(active.MotionWindow.IsOpen)return active.MotionWindow.Root.worldBound.Contains(p);
+            bool hit=(!active.DialogueCollapsed&&active.content.worldBound.Contains(p)) || VisibleHit(active.walkBar,p) || VisibleHit(active.expand,p) || VisibleHit(active.historyPanel, p) || active.Settings.IsOpen || active.sizeEdit.Active;
             if(!hit&&(Input.GetMouseButtonDown(0)||Input.GetMouseButtonDown(1)||Input.GetMouseButtonDown(2)))active.input.Blur();
             return hit;
         }

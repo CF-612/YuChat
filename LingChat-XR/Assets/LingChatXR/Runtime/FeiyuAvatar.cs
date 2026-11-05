@@ -71,6 +71,33 @@ namespace LingChatXR
         readonly System.Collections.Generic.HashSet<ExpressionKey> faceKeys=new System.Collections.Generic.HashSet<ExpressionKey>();
         float surprisedMouthUntil;
         public string PreviewEmotion {get;set;}
+        ExpressionKey? inspectingExpression;
+        readonly System.Collections.Generic.Dictionary<ExpressionKey,float> inspectionBaseline=new System.Collections.Generic.Dictionary<ExpressionKey,float>();
+        public string[] InspectionExpressions => System.Linq.Enumerable.ToArray(System.Linq.Enumerable.OrderBy(
+            System.Linq.Enumerable.Select(faceKeys,k=>k.Name),n=>n,StringComparer.Ordinal));
+        public string InspectedExpression=>inspectingExpression?.Name;
+        public bool InspectExpression(string name)
+        {
+            if(Instance==null || touching || suspended || heldReaction || fallingReaction) return false;
+            foreach(var key in faceKeys)
+            {
+                if(key.Name!=name)continue;
+                var face=Instance.Runtime.Expression;
+                if(inspectingExpression==null)
+                    foreach(var current in faceKeys)inspectionBaseline[current]=face.GetWeight(current);
+                foreach(var current in faceKeys)face.SetWeight(current,current.Equals(key)?1:0);
+                inspectingExpression=key;
+                return true;
+            }
+            return false;
+        }
+        public void EndExpressionInspection()
+        {
+            if(inspectingExpression==null)return;
+            if(Instance!=null)foreach(var kv in inspectionBaseline)Instance.Runtime.Expression.SetWeight(kv.Key,kv.Value);
+            inspectingExpression=null;
+            inspectionBaseline.Clear();
+        }
         public string EyeOwner {get;private set;}
         public string MouthOwner {get;private set;}
         // 兼容旧检查入口；运行时能力来自显式配置，不再由模型哈希开启。
@@ -407,6 +434,7 @@ namespace LingChatXR
         }
         public void SetFeedback(bool isTouching, bool isSuspended, bool cancelTouch=false)
         {
+            if(isTouching || isSuspended || cancelTouch) EndExpressionInspection();
             if(cancelTouch)CancelTouch();
             if(isTouching){if(!TouchSession.Active)petVoiceAttempted=false;TouchSession.Begin(Time.unscaledTime,speech!=null&&speech.IsPlaying);TouchSession.Contact(true,Time.unscaledTime,speech!=null&&speech.IsPlaying);}
             if(!isTouching&&TouchSession.Active){if(PointerContactHeld&&!isSuspended)TouchSession.Contact(false,Time.unscaledTime,speech!=null&&speech.IsPlaying);else TouchSession.End(Time.unscaledTime,speech!=null&&speech.IsPlaying,isSuspended);}
@@ -485,7 +513,8 @@ namespace LingChatXR
             if(!holdFace&&touchExpression<.001f)touchExpression=0;
             float squeeze=(hasAuthoredSqueeze||hasSqueezedEyes)&&touching?Mathf.SmoothStep(0,1,Mathf.InverseLerp(.035f,.055f,pressTarget)):0;
             pressEyes=Mathf.Lerp(pressEyes,squeeze,1-Mathf.Exp(-dt/.075f));
-            ComposeFace(dt,holdFace);
+            if(inspectingExpression.HasValue) Instance.Runtime.Expression.SetWeight(inspectingExpression.Value,1);
+            else ComposeFace(dt,holdFace);
             UpdateSticker(viewerPosition);
             if(!MotionPreviewMode)Motions.UpdateConversation(speech!=null&&speech.IsPlaying,chat!=null&&chat.Thinking,
                 speech?.Generation??0,speech?.PlaybackSeconds??0,speech?.Rhythm,chat?.Emotion??"");

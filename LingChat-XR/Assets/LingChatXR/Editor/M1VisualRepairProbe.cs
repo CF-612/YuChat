@@ -56,14 +56,7 @@ namespace LingChatXR.Editor
                 results.Add(new JObject{["model"]=folder,["previewSeconds"]=EditorApplication.timeSinceStartup-start});
                 var clone=view.MotionWindow.PreviewAvatar;
                 if(clone==null)throw new Exception("preview failed");
-                var resources=avatar.ResourcesForPreview();
-                File.WriteAllText(Path.Combine(Output,"import-profile-"+folder+".txt"),resources.LastPreviewImportProfile??"");
-                Check(resources.Textures.Count>0,"source-textures-cached-"+folder);
-                Check(!clone.Instance.GetComponent<RuntimeGltfInstance>().RuntimeResources.Any(x=>x.Item2 is Texture),"preview-decodes-no-duplicate-textures-"+folder);
-                var mainMaterials=avatar.Instance.GetComponentsInChildren<Renderer>().SelectMany(r=>r.sharedMaterials).Where(m=>m!=null).ToArray();
-                var previewMaterials=clone.Instance.GetComponentsInChildren<Renderer>().SelectMany(r=>r.sharedMaterials).Where(m=>m!=null).ToArray();
-                Check(!mainMaterials.Intersect(previewMaterials).Any(),"preview-materials-independent-"+folder);
-                Check(previewMaterials.Where(m=>m.HasProperty("_MainTex")&&m.GetTexture("_MainTex")!=null).All(m=>resources.Textures.Values.Contains(m.GetTexture("_MainTex"))),"preview-references-source-textures-"+folder);
+                Check(clone==avatar && clone.Instance==avatar.Instance,"review-uses-scene-instance-"+folder);
                 foreach(string id in new[]{"wave_normal_right_661","idle_normal_both_550","bow_normal_both_571"})
                 {
                     view.MotionWindow.SelectAction(id,true);while(clone.Motions.Loading)yield return null;
@@ -86,7 +79,7 @@ namespace LingChatXR.Editor
                 }
                 var cached=clone;view.MotionWindow.Close();view.MotionWindow.Open();
                 Check(view.MotionWindow.PreviewAvatar==cached&&!view.MotionWindow.Preparing,"reopen-without-import-"+folder);view.MotionWindow.Close();
-                Check(resources.Textures.Values.All(t=>t!=null),"closing-preview-preserves-textures-"+folder);
+                Check(avatar.Instance!=null&&avatar.gameObject.activeInHierarchy,"closing-review-preserves-avatar-"+folder);
                 live.BeginSizeEdit(out int generation);live.PreviewSize(generation,.45f);
                 var frames=Frames(8);while(frames.MoveNext())yield return null;
                 var panel=view.GetComponent<UIDocument>().rootVisualElement;
