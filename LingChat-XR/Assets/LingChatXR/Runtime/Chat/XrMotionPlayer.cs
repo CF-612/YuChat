@@ -212,9 +212,19 @@ namespace LingChatXR.Chat
             if(headId!=null&&!value.Allowed(headId))headId=null;
             if(!value.director)CancelOwner("director");
         }
+#if UNITY_EDITOR
+        public event Action SpatialControlRevoked;
+        public bool HasPcStream=>SpatialControlRevoked!=null;
+#endif
         public void SetSpatialAllowed(bool allowed)
         {
-            if(spatialAllowed&&!allowed)Stop(true);
+            if(spatialAllowed&&!allowed)
+            {
+                Stop(true);
+#if UNITY_EDITOR
+                SpatialControlRevoked?.Invoke();
+#endif
+            }
             bool resumed=!spatialAllowed&&allowed;spatialAllowed=allowed;
             if(resumed&&!PreviewMode&&Preferences.enabled&&Preferences.idle!="none")_=SetIdle(Preferences.idle);
         }

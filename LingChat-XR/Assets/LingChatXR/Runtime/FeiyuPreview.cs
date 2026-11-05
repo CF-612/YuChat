@@ -484,6 +484,10 @@ namespace LingChatXR
 
         private void ApplyState()
         {
+#if UNITY_EDITOR
+            if(avatar.Motions?.HasPcStream==true && Interaction.State!=PetState.Idle)
+                avatar.Motions.SetSpatialAllowed(false);
+#endif
             avatarRoot.transform.position = ToUnity(Interaction.Position);
             avatar.SetFeedback(Interaction.State == PetState.Touched, Interaction.State == PetState.Suspended, Interaction.State!=PetState.Idle&&Interaction.State!=PetState.Touched);
             if (boundary != null) {boundary.startColor=Interaction.PlaneConfirmed?new Color(.36f,.82f,1,.9f):Color.gray;boundary.endColor=Interaction.PlaneConfirmed?new Color(.30f,.61f,.96f,.9f):Color.gray;}

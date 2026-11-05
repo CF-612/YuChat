@@ -45,7 +45,14 @@ namespace LingChatXR.Editor
             var req=new HttpRequestMessage(path=="/health"?HttpMethod.Get:HttpMethod.Post,new Uri(uri,path));
             req.Headers.Authorization=new AuthenticationHeaderValue("Bearer",(string)c["token"]);return req;
         }
-        void OnDisable(){revision++;if(watching&&owner)owner.Motions.Stop();watching=false;}
+        void OnDisable()
+        {
+            revision++;
+            if(watching&&owner)owner.Motions.Stop();
+            watching=false;
+            var demo=Live?Live.GetComponent<ArdyPlaytest>():null;
+            if(demo!=null){demo.End();UnityEngine.Object.Destroy(demo);}
+        }
         internal string ProbeInput {set=>input=value;}
         internal string Selected=>action;
         internal string Executed=>outcome;
@@ -57,6 +64,25 @@ namespace LingChatXR.Editor
             }
             Repaint();
         }
+        static void DrawArdy(FeiyuPreview live)
+        {
+            var demo=live.GetComponent<ArdyPlaytest>();
+            EditorGUILayout.LabelField("Core8 路径试玩",EditorStyles.boldLabel);
+            if(demo==null || !demo.Active)
+            {
+                using(new EditorGUI.DisabledScope(live.Interaction.State!=Core.PetState.Idle))
+                    if(GUILayout.Button("固定走路 → ARDY 接步"))
+                        (demo!=null?demo:live.gameObject.AddComponent<ArdyPlaytest>()).Begin(live);
+            }
+            else
+            {
+                EditorGUILayout.LabelField("控制者 / 目标",demo.Owner+" / "+demo.Target);
+                EditorGUILayout.LabelField("请求往返 / 缓冲",demo.RoundTripMs.ToString("0")+" ms / "+demo.Buffered+" 帧");
+                if(GUILayout.Button("切换前方 / 侧方目标")) demo.ChangeTarget();
+                if(GUILayout.Button("停止路径试玩")){demo.End();UnityEngine.Object.Destroy(demo);}
+            }
+            if(demo!=null) EditorGUILayout.LabelField(demo.Status);
+        }
         void OnGUI(){
             scroll=EditorGUILayout.BeginScrollView(scroll);
             EditorGUILayout.LabelField("PC 导演",directorStatus);EditorGUILayout.LabelField("T2M",generatorStatus);
@@ -66,6 +92,7 @@ namespace LingChatXR.Editor
             else{
                 var player=live.Avatar.Motions;
                 EditorGUILayout.LabelField("实际状态",live.Interaction.State.ToString());
+                DrawArdy(live);
                 if(!live.Interaction.PlaneConfirmed && GUILayout.Button("放置到桌面中心"))live.Place(Vector3.zero);
                 if((!player.Preferences.enabled||!player.Preferences.director||!player.Preferences.automatic||!player.Preferences.conversation||player.Preferences.items.ContainsValue(false))&&GUILayout.Button("恢复默认许可（全部开启）"))
                 {

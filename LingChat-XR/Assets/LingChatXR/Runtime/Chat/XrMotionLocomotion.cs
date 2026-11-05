@@ -18,6 +18,25 @@ namespace LingChatXR.Chat
         Quaternion[] locomotionFrom;
         float locomotionTime,locomotionBlend,locomotionBlendDuration=.22f,locomotionExit=-1;
         bool locomotionOwned;
+#if UNITY_EDITOR
+        Quaternion[] experimentFrame;
+        float experimentHipsOffset;
+        // PC 实验共用现有 locomotion 控制权；空间失效后同一入口拒收。
+        public bool SubmitLocomotionFrame(Dictionary<HumanBodyBones,Quaternion> pose, float hipsOffset)
+        {
+            if (!locomotionOwned || !spatialAllowed || disposed || !float.IsFinite(hipsOffset)) return false;
+            experimentFrame ??= new Quaternion[bones.Length];
+            Array.Copy(rest,experimentFrame,bones.Length);
+            foreach (var joint in pose)
+            {
+                if (!controlBones.TryGetValue(joint.Key,out var bone)) continue;
+                int index = Array.IndexOf(bones,bone);
+                if (index >= 0) experimentFrame[index] = joint.Value;
+            }
+            experimentHipsOffset = hipsOffset;
+            return true;
+        }
+#endif
         float locomotionFromY;
         public string DefaultMovement {get;private set;}="walk";
         public bool HasRunning=>locomotionClips.ContainsKey("run");
@@ -69,6 +88,9 @@ namespace LingChatXR.Chat
         public void SampleLocomotion(string kind,float seconds)
         {
             if(!locomotionOwned||!float.IsFinite(seconds)||!locomotionClips.TryGetValue(kind,out var clip))return;
+#if UNITY_EDITOR
+            experimentFrame=null;
+#endif
             if(locomotionClip!=clip)
             {
                 // 转身接前走缩短混合，保留当前姿态起点，避免启动前半步被长混合吞掉。
@@ -79,6 +101,9 @@ namespace LingChatXR.Chat
         }
         public void EndLocomotion(bool immediate=false)
         {
+#if UNITY_EDITOR
+            experimentFrame=null;
+#endif
             // 换模型时旧 ControlRig 可能先销毁；清控制权即可，不能再写旧髋骨。
             if(disposed||hips==null){locomotionOwned=false;locomotionClip=null;locomotionExit=-1;return;}
             if(!LocomotionActive)return;
@@ -90,6 +115,14 @@ namespace LingChatXR.Chat
         {
             if(locomotionOwned)
             {
+#if UNITY_EDITOR
+                if(experimentFrame!=null)
+                {
+                    Write(experimentFrame);
+                    hips.localPosition += Vector3.up * experimentHipsOffset;
+                    return true;
+                }
+#endif
                 if(locomotionClip==null){Write(locomotionFrom);return true;}
                 bool vertical=verticalLocomotion.Contains(locomotionClip);
                 Sample(locomotionClip,locomotionTime,vertical);float sampledY=hips.localPosition.y;Snapshot(source);
