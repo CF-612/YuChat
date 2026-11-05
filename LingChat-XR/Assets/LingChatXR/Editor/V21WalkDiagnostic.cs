@@ -153,34 +153,112 @@ namespace LingChatXR.Editor
             }
             stream.End();
             if(Environment.GetEnvironmentVariable("XR_SKIRT_SIDE")!="1")yield break;
+            player.EndLocomotion(true);
             // 同一批实际 Core8 帧分别驱动两次，等待独立 Unity 帧完成蒙皮后再取侧面。
             live.Locomotion.ManualStep=true;avatar.FreezePresentation=true;
             var control=avatar.Instance.Runtime.ControlRig;
             avatar.Instance.TryGetBoneTransform(HumanBodyBones.LeftUpperLeg,out var left);
             avatar.Instance.TryGetBoneTransform(HumanBodyBones.RightUpperLeg,out var right);
-            foreach(var radius in new[]{0f,.035f,.055f})
+            bool meshCheck=Environment.GetEnvironmentVariable("XR_SKIRT_MESH")=="1";
+            var service=UniVRM10.FastSpringBones.FastSpringBoneService.Instance;
+            var oldUpdate=service.UpdateType;
+            if(meshCheck)service.UpdateType=UniVRM10.FastSpringBones.FastSpringBoneService.UpdateTypes.Manual;
+            bool restSweep=Environment.GetEnvironmentVariable("XR_SKIRT_IDLE_SWEEP")=="1";
+            var tuned=config.colliders.First(c=>!string.IsNullOrEmpty(c.capsuleEndBone)).walkingRadius;
+            foreach(var radius in restSweep?new[]{.10f,.14f,.16f,.18f,.20f}:meshCheck?new[]{0f,tuned}:new[]{0f,.035f,.055f})
             {
                 var candidate=JsonUtility.FromJson<SpringPhysicsConfiguration>(JsonUtility.ToJson(config));
-                candidate.materials.Single(m=>m.id=="cloth").minimumContactRadius=radius;
+                if(meshCheck){
+                    foreach(var collider in candidate.colliders.Where(c=>!string.IsNullOrEmpty(c.capsuleEndBone))){
+                        if(restSweep){collider.radius=radius;collider.walkingRadius=0;}else collider.walkingRadius=radius;
+                    }
+                }else candidate.materials.Single(m=>m.id=="cloth").minimumContactRadius=radius;
                 avatar.Physics.ConfigureMaterials(candidate);player.SetSpatialAllowed(true);
                 if(!player.BeginLocomotion())throw new Exception("重播未取得控制权");
-                avatar.Physics.RequestReset();
-                for(int i=0;i<poses.Count;i++)
+                player.SubmitLocomotionFrame(poses[0].pose,poses[0].y);
+                player.Step(.05f);avatar.Instance.Runtime.Process();avatar.Physics.RequestReset();
+                avatar.Physics.Prepare();
+                if(meshCheck)for(int k=0;k<60;k++)service.ManualUpdate(1f/60);
+                for(int i=0;!restSweep && i<poses.Count;i++)
                 {
                     player.SubmitLocomotionFrame(poses[i].pose,poses[i].y);
                     player.Step(.05f);avatar.Instance.Runtime.Process();
-                    for(int settle=0;settle<3;settle++)yield return null;
+                    if(meshCheck){
+                        avatar.Physics.SetSpatialMotion(live.Interaction,.05f,player.LocomotionOwned);
+                        avatar.Physics.Prepare();
+                        for(int k=0;k<3;k++)service.ManualUpdate(1f/60);
+                        yield return null;
+                    }else for(int settle=0;settle<3;settle++)yield return null;
                     if(i%4!=0)continue;
                     var middle=(left.position+right.position)*.5f;
                     var axis=Vector3.ProjectOnPlane(control.GetBoneTransform(HumanBodyBones.Hips).right,Vector3.up).normalized;
                     cam.orthographicSize=avatar.HeightMeters*.34f;
                     cam.transform.position=middle+axis*.7f;cam.transform.LookAt(middle);
+                    if(meshCheck) ExportSkirtSurfaces(avatar,config,$"mesh-{Mathf.RoundToInt(radius*1000)}-{i:D2}");
                     LocomotionProbe.Capture(cam,$"replay-{Mathf.RoundToInt(radius*1000)}-{i:D2}");
                 }
                 player.EndLocomotion(true);
+                if(meshCheck)
+                {
+                    foreach(var gait in restSweep?new[]{"idle"}:new[]{"walk","skip","run","idle"})
+                    {
+                        bool moving=gait!="idle";
+                        if(moving&&!player.BeginLocomotion())throw new Exception("本地步态无法取得控制权");
+                        for(int k=0;k<90;k++)
+                        {
+                            if(moving)player.SampleLocomotion(gait,k/60f);
+                            player.Step(1f/60);avatar.Instance.Runtime.Process();
+                            avatar.Physics.SetSpatialMotion(live.Interaction,1f/60,moving);
+                            avatar.Physics.Prepare();service.ManualUpdate(1f/60);
+                            yield return null;
+                            if(k>=24 && k%12==0){
+                                string name=$"{Mathf.RoundToInt(radius*1000)}-{gait}-{k:D2}";
+                                ExportSkirtSurfaces(avatar,config,"mesh-"+name);
+                                if(k==48)LocomotionProbe.Capture(cam,"fixed-"+name);
+                            }
+                        }
+                        player.EndLocomotion(true);
+                    }
+                }
             }
-            avatar.Physics.ConfigureMaterials(config);avatar.Physics.RequestReset();
+            service.UpdateType=oldUpdate;avatar.Physics.ConfigureMaterials(config);avatar.Physics.RequestReset();
             avatar.FreezePresentation=false;live.Locomotion.ManualStep=false;
+        }
+        // 记录真实蒙皮三角面。按材质与权重筛选，不把衣服正常遮住腿的屏幕投影算成穿插。
+        static void ExportSkirtSurfaces(FeiyuAvatar a,SpringPhysicsConfiguration profile,string file)
+        {
+            var rig=a.Instance;
+            var cloth=profile.bindings.Where(b=>b.material=="cloth").SelectMany(b=>rig.SpringBone.Springs[b.spring].Joints).Select(j=>j.transform).ToHashSet();
+            var legs=new HashSet<Transform>();
+            foreach(var id in new[]{HumanBodyBones.LeftUpperLeg,HumanBodyBones.RightUpperLeg,HumanBodyBones.LeftLowerLeg,HumanBodyBones.RightLowerLeg})
+                if(rig.TryGetBoneTransform(id,out var t))legs.Add(t);
+            using var writer=new BinaryWriter(File.Create(Path.Combine(Output,file+".bin")));
+            void WriteVertex(Vector3 v){writer.Write(v.x);writer.Write(v.y);writer.Write(v.z);}
+            foreach(var r in rig.GetComponentsInChildren<SkinnedMeshRenderer>())
+            {
+                var mesh=r.sharedMesh;if(mesh==null || mesh.boneWeights.Length==0)continue;
+                var bones=r.bones;var weights=mesh.boneWeights;
+                var baked=new Mesh();
+                try{
+                    r.BakeMesh(baked);var v=baked.vertices;
+                    for(int i=0;i<v.Length;i++)v[i]=r.transform.TransformPoint(v[i]);
+                    var kind=new byte[v.Length];
+                    for(int i=0;i<kind.Length;i++){
+                        var w=weights[i];float clothW=0,legW=0;
+                        void Add(int index,float weight){if(weight<=0)return;if(cloth.Contains(bones[index]))clothW+=weight;if(legs.Contains(bones[index]))legW+=weight;}
+                        Add(w.boneIndex0,w.weight0);Add(w.boneIndex1,w.weight1);Add(w.boneIndex2,w.weight2);Add(w.boneIndex3,w.weight3);
+                        kind[i]=(byte)(clothW>.25f?1:legW>.25f?2:0);
+                    }
+                    for(int sub=0;sub<mesh.subMeshCount;sub++){
+                        var tris=mesh.GetTriangles(sub);var name=r.sharedMaterials[sub].name;
+                        for(int i=0;i<tris.Length;i+=3){
+                            int x=tris[i],y=tris[i+1],z=tris[i+2];
+                            byte k=kind[x];if(k==0||kind[y]!=k||kind[z]!=k)continue;
+                            writer.Write(k);writer.Write(name);WriteVertex(v[x]);WriteVertex(v[y]);WriteVertex(v[z]);
+                        }
+                    }
+                }finally{Object.DestroyImmediate(baked);}
+            }
         }
         static void CheckCapsule()
         {

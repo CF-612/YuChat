@@ -495,7 +495,7 @@ namespace LingChatXR
             settleAmount=state.SettleAmount;impact=Mathf.Clamp01(state.LandingSpeed/4.5f);
             fallTarget=state.State==Core.PetState.Descending?Mathf.Clamp01(-state.VerticalVelocity/3):0;
             Physics?.SetPaused(state.State == Core.PetState.Suspended || state.State == Core.PetState.Unplaced);
-            Physics?.SetSpatialMotion(state,deltaTime);
+            Physics?.SetSpatialMotion(state,deltaTime,Motions?.LocomotionOwned==true);
         }
 
         public void Present(Vector3 viewerPosition)

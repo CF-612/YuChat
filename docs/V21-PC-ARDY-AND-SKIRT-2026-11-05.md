@@ -17,7 +17,32 @@ PC 实验以开头 16 帧普通步行测得的上身倾角和髋部高度作为�
 
 复验时在下方侧面对照命令前另设 `$env:XR_ARDY_STANCE='1'`，换一个新的 EvidenceDirectory。要回到侧面对照，移除这个环境变量。
 
-## 本次侧面复查
+## 裙摆穿模修复（PC 复验）
+
+V21 的八条裙骨原先在站立和抬腿时共用同一大腿碰撞半径。腿部皮肤及内侧短裤都能与深色裙面相交，抬腿时还涉及白色布层。运行时复用 UniVRM 已有的两条大腿胶囊，只对明确启用步态校准的裙骨链平滑改变半径。V21 站立为 0.14，行走为 0.22，离开桌面接触后恢复基础值 0.10，单位均为模型局部单位。原 VRM、动作数据和皮肤材质均未改动。校准已写入本机 V21 的 manifest，其他副本用上面的准备脚本同步。
+
+在同一 V21 实例上重放相同姿态，用烘焙后的裙摆和腿部三角面检查双向边穿过面内部。每组三角形对在一个采样时刻计一次。基线与修复组各 39 帧：15 个实际 ARDY 姿态，以及普通走、蹦跳、跑步、待机各 6 个姿态。对照不修改腿部骨骼、相机或可见材质。局限：只统计三个顶点都达到部位权重门槛的三角面，不测共面重叠、混合权重边界、裙层自碰撞或未采样姿态。大步抬膝时裙边仍会被顶起，能看到部分内侧短裤。外观自然度由实际试玩判断。
+
+| 采样动作 | 修复前相交对次 | 修复后 |
+| --- | ---: | ---: |
+| ARDY 接步 | 2169 | 0 |
+| 普通走 | 389 | 0 |
+| 蹦跳 | 695 | 0 |
+| 跑步 | 283 | 0 |
+| 待机 | 606 | 0 |
+
+终验使用下面的命令，并保留本地生成的 intersections.json、replay 与 fixed 图片。提起及倒挂的隔离回归位于 evidence/skirt-inverted-grounded，覆盖三种尺寸和 30/60/90 Hz 的 18 个收敛用例。此批未打 APK。
+
+```powershell
+$env:XR_V21_TEST_ARDY='1'
+$env:XR_SKIRT_SIDE='1'
+$env:XR_SKIRT_MESH='1'
+Remove-Item Env:XR_ARDY_STANCE,Env:XR_SKIRT_IDLE_SWEEP -ErrorAction SilentlyContinue
+./tools/run-m1-check.ps1 -EvidenceDirectory evidence/skirt-delivery -Method LingChatXR.Editor.V21WalkDiagnostic.Run
+& .cache/video-motion/worker311/Scripts/python.exe tools/check-skirt-surfaces.py evidence/skirt-delivery --verify-pair 0 220
+```
+
+## 上一批侧面复查
 
 用 Game 按钮从未放置状态启动，检查按钮中心实际可命中，送入 UI 事件，等到生成帧播放，再通过同一个按钮改目标。隔离 Unity 输出 Game-start.png、Game-generated.png 和 ardy.txt。
 

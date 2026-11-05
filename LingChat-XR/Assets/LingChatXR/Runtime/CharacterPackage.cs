@@ -30,6 +30,7 @@ namespace LingChatXR
         public int group, index;
         public string node;
         public string capsuleEndBone;
+        public float standingRadius,walkingRadius;
         public Vector3 offset;
         public float radius;
     }
@@ -43,6 +44,7 @@ namespace LingChatXR
     {
         public string id;
         public float rootStiffness=1, tipStiffness=1, gravity=1, drag=.65f;
+        public bool useWalkingClearance;
         public float rootAngle=90, tipAngle=90, minimumContactRadius;
         public bool Valid => !string.IsNullOrEmpty(id) &&
             float.IsFinite(rootStiffness)&&rootStiffness>=0&&rootStiffness<=20 &&

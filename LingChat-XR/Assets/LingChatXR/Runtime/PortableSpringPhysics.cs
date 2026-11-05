@@ -16,6 +16,10 @@ namespace LingChatXR
         readonly Dictionary<Transform,BlittableJointMutable> materials=new Dictionary<Transform,BlittableJointMutable>();
         readonly Dictionary<VRM10SpringBoneCollider,(Vector3 offset,float radius,VRM10SpringBoneColliderTypes type,Vector3 tail)> colliderSource=new();
         readonly List<VRM10SpringBoneColliderGroup[]> groupSource=new List<VRM10SpringBoneColliderGroup[]>();
+        readonly Dictionary<Transform,(VRM10SpringBoneCollider collider,float standingRadius,float walkingRadius)> gaitCapsules=new();
+        readonly List<(int index,BlittableCollider original,float standingRadius,float walkingRadius)> gaitSlots=new();
+        readonly HashSet<Transform> gaitRoots=new();
+        float gaitBlend,groundBlend=1;
         public int ColliderRebuildCount { get; private set; }
         public int ConfiguredJointCount => materials.Count;
         FastSpringBoneCombinedBuffer configured;
@@ -38,8 +42,14 @@ namespace LingChatXR
         bool hasRootPosition;
         Vector3 previousPosition;
         bool hasPosition;
-        public void SetSpatialMotion(Core.PetInteraction state,float dt)
+        public void SetSpatialMotion(Core.PetInteraction state,float dt,bool walking=false)
         {
+            if(float.IsFinite(dt)){
+                var step=Mathf.Clamp(dt,0,.1f)*6;
+                bool grounded=state.State==Core.PetState.Idle || state.State==Core.PetState.Touched;
+                groundBlend=Mathf.MoveTowards(groundBlend,grounded?1:0,step);
+                gaitBlend=Mathf.MoveTowards(gaitBlend,walking&&grounded?1:0,step);
+            }
             Vector3 position=FeiyuPreview.ToUnity(state.Position),velocity=Vector3.zero;
             if(state.State==Core.PetState.Descending)velocity=Vector3.up*state.VerticalVelocity;
             else if((state.State==Core.PetState.Held || state.State==Core.PetState.Idle&&state.AutonomousEnabled) &&
@@ -63,6 +73,14 @@ namespace LingChatXR
         // 映射完全来自角色包；运行时不根据角色身份、骨名关键词猜部件类型。
         public void ConfigureMaterials(SpringPhysicsConfiguration configuration)
         {
+            // 配置切换时先还原仍在使用的合并缓冲，再重新解析原生胶囊槽位。
+            var liveBuffer=FastSpringBoneService.Instance.BufferCombiner.Combined;
+            if(liveBuffer!=null && liveBuffer==configured)
+            {
+                var entries=liveBuffer.Colliders;
+                foreach(var slot in gaitSlots)entries[slot.index]=slot.original;
+            }
+            gaitCapsules.Clear();gaitSlots.Clear();gaitRoots.Clear();
             materials.Clear();configured=null;
             ConfigureColliders(configuration);
             if(configuration?.bindings==null||configuration.materials==null)return;
@@ -73,6 +91,7 @@ namespace LingChatXR
                 var material=System.Array.Find(configuration.materials,m=>m!=null&&m.id==binding.material&&m.Valid);
                 if(material==null||chain.Joints.Count==0||chain.Joints[0].transform.name!=binding.root)
                 {Debug.LogWarning("物理材质绑定无效，保留作者配置："+binding.root);continue;}
+                if(material.useWalkingClearance)gaitRoots.Add(chain.Joints[0].transform);
                 for(int i=0;i<chain.Joints.Count;i++)
                 {
                     var joint=chain.Joints[i].transform;var b=source[joint];
@@ -109,6 +128,11 @@ namespace LingChatXR
                     {Debug.LogWarning("碰撞胶囊终点无效："+entry.capsuleEndBone);continue;}
                     tail=collider.transform.InverseTransformPoint(end.position);
                     shape=VRM10SpringBoneColliderTypes.Capsule;
+                    if(float.IsFinite(entry.walkingRadius)&&entry.walkingRadius>entry.radius&&entry.walkingRadius<=1)
+                    {
+                        float standing=float.IsFinite(entry.standingRadius)?Mathf.Clamp(entry.standingRadius,entry.radius,entry.walkingRadius):entry.radius;
+                        gaitCapsules[collider.transform]=(collider,standing,entry.walkingRadius);
+                    }
                 }
                 desired[collider]=(entry.offset,entry.radius,shape,tail);
             }
@@ -131,6 +155,27 @@ namespace LingChatXR
                 if(current.Count!=groups.Count||!System.Linq.Enumerable.SequenceEqual(current,groups)){current.Clear();current.AddRange(groups);changed=true;}
             }
             if(changed){instance.Runtime.SpringBone.ReconstructSpringBone();ColliderRebuildCount++;resetPending=true;}
+        }
+        void BindGaitColliders(FastSpringBoneCombinedBuffer buffer)
+        {
+            gaitSlots.Clear();
+            if(gaitCapsules.Count==0 || gaitRoots.Count==0)return;
+            foreach(var spring in buffer.Springs)
+            {
+                if(spring.logicSpan.count==0)continue;
+                int offset=spring.transformIndexOffset;
+                int root=buffer.Logics[spring.logicSpan.startIndex].headTransformIndex;
+                if(!gaitRoots.Contains(buffer.TransformAccessArray[offset+root]))continue;
+                for(int i=spring.colliderSpan.startIndex;i<spring.colliderSpan.EndIndex;i++)
+                {
+                    var original=buffer.Colliders[i];
+                    var bone=buffer.TransformAccessArray[offset+original.transformIndex];
+                    if(original.colliderType!=BlittableColliderType.Capsule || !gaitCapsules.TryGetValue(bone,out var pair))continue;
+                    if(!Mathf.Approximately(original.radius,pair.collider.Radius) ||
+                        (Vector3)original.offset!=pair.collider.Offset || (Vector3)original.tailOrNormal!=pair.collider.Tail)continue;
+                    gaitSlots.Add((i,original,pair.standingRadius,pair.walkingRadius));
+                }
+            }
         }
         public void RequestReset() {resetPending=true;hasPosition=false;hasRootPosition=false;MotionAirForce=Vector3.zero;}
         public void SetPaused(bool value)
@@ -182,7 +227,16 @@ namespace LingChatXR
                     instance.Runtime.SpringBone.SetJointLevel(entry.Key,new BlittableJointMutable(b.stiffnessForce,b.gravityPower,b.gravityDir,b.dragForce,
                         b.radius*radiusScale,fallbackLimit?(float)AnglelimitTypes.Cone:(float)b.anglelimitType,fallbackLimit?30f*Mathf.Deg2Rad:b.anglelimit1,b.anglelimit2,b.anglelimitOffset));
                 }
+                if(configured!=buffer) BindGaitColliders(buffer);
                 configured=buffer;lastScale=scale;configuredAir=MotionAirEnabled;
+            }
+            // 只改变现有大腿胶囊的接触距离，不重建物理世界。退出行走后回到角色包的静止半径。
+            var colliders=buffer.Colliders;
+            foreach(var slot in gaitSlots){
+                var c=slot.original;
+                float radius=Mathf.Lerp(c.radius,Mathf.Lerp(slot.standingRadius,slot.walkingRadius,gaitBlend),groundBlend);
+                if(!Mathf.Approximately(colliders[slot.index].radius,radius))
+                    colliders[slot.index]=new BlittableCollider(c.offset,radius,c.tailOrNormal,c.colliderType,c.transformIndex);
             }
             bool hold=paused||recoveringLargeStep;
             instance.Runtime.SpringBone.SetModelLevel(instance.transform,new BlittableModelLevel(externalForce:MotionAirEnabled&&!hold?MotionAirForce:Vector3.zero,stopSpringBoneWriteback:hold,supportsScalingAtRuntime:true));
