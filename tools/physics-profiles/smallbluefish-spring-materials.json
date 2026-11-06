@@ -93,6 +93,7 @@
   "materials": [
     {
       "id": "cloth",
+      "authoredGroundResponse": true,
       "minimumContactRadius": 0.035,
       "useWalkingClearance": true,
       "drag": 0.7,
@@ -104,6 +105,8 @@
     },
     {
       "id": "hair",
+      "authoredGroundSpheres": true,
+      "authoredGroundResponse": true,
       "drag": 0.72,
       "tipAngle": 35,
       "rootAngle": 25,
@@ -135,7 +138,7 @@
       "group": 0,
       "radius": 0.100,
       "standingRadius": 0.14,
-      "walkingRadius": 0.22,
+      "walkingRadius": 0.14,
       "index": 1
     },
     {
@@ -149,7 +152,7 @@
       "group": 0,
       "radius": 0.100,
       "standingRadius": 0.14,
-      "walkingRadius": 0.22,
+      "walkingRadius": 0.14,
       "index": 2
     },
     {

@@ -92,6 +92,11 @@ namespace LingChatXR.Editor
             var poses=new List<(Dictionary<HumanBodyBones,Quaternion> pose,float y)>();
             float initialHeight=avatar.Instance.Runtime.ControlRig.GetBoneTransform(HumanBodyBones.Hips).localPosition.y; int lastPose=-1;
             double demoStart=EditorApplication.timeSinceStartup, nextShot=0;
+            var hair=config.bindings.Where(b=>b.material=="hair")
+                .SelectMany(b=>avatar.Instance.SpringBone.Springs[b.spring].Joints.SkipLast(1))
+                .Select(j=>j.transform).ToArray();
+            var hem=config.bindings.Where(b=>b.material=="cloth")
+                .Select(b=>avatar.Instance.SpringBone.Springs[b.spring].Joints.Last().transform).ToArray();
             void CaptureDemo()
             {
                 if(stream.Owner=="角色待机")return;
@@ -108,6 +113,8 @@ namespace LingChatXR.Editor
                 var hip=rig.GetBoneTransform(HumanBodyBones.Hips);
                 var thigh=rig.GetBoneTransform(HumanBodyBones.LeftUpperLeg);
                 demoFrames.Add(new JObject{["t"]=t,["owner"]=stream.Owner,["submitted"]=stream.Submitted,["target"]=stream.Target,
+                    ["hairMeanDegrees"]=hair.Average(j=>Quaternion.Angle(j.localRotation,avatar.Instance.Runtime.InitPose[j].LocalRotation)),
+                    ["hemBelowHipMm"]=1000*hem.Average(j=>hip.position.y-j.position.y),
                     ["status"]=stream.WorkerPhase,["hipYaw"]=Mathf.DeltaAngle(0,hip.localEulerAngles.y),["thighX"]=Mathf.DeltaAngle(0,thigh.localEulerAngles.x)});
                 LocomotionProbe.Capture(cam,"demo-"+(demoFrames.Count-1).ToString("D4"));
             }
@@ -164,12 +171,16 @@ namespace LingChatXR.Editor
             var oldUpdate=service.UpdateType;
             if(meshCheck)service.UpdateType=UniVRM10.FastSpringBones.FastSpringBoneService.UpdateTypes.Manual;
             bool restSweep=Environment.GetEnvironmentVariable("XR_SKIRT_IDLE_SWEEP")=="1";
+            bool comparePrior=meshCheck && Environment.GetEnvironmentVariable("XR_SKIRT_COMPARE_PRIOR")=="1";
             var tuned=config.colliders.First(c=>!string.IsNullOrEmpty(c.capsuleEndBone)).walkingRadius;
-            foreach(var radius in restSweep?new[]{.10f,.14f,.16f,.18f,.20f}:meshCheck?new[]{0f,tuned}:new[]{0f,.035f,.055f})
+            foreach(var radius in restSweep?new[]{.10f,.14f,.16f,.18f,.20f}:meshCheck?new[]{comparePrior ? .22f : 0f,tuned}:new[]{0f,.035f,.055f})
             {
                 var candidate=JsonUtility.FromJson<SpringPhysicsConfiguration>(JsonUtility.ToJson(config));
+                if(comparePrior && radius==.22f) foreach(var material in candidate.materials)
+                    {material.authoredGroundResponse=false;material.authoredGroundSpheres=false;}
                 if(meshCheck){
                     foreach(var collider in candidate.colliders.Where(c=>!string.IsNullOrEmpty(c.capsuleEndBone))){
+                        if(comparePrior && radius==.22f)collider.standingRadius=.14f;
                         if(restSweep){collider.radius=radius;collider.walkingRadius=0;}else collider.walkingRadius=radius;
                     }
                 }else candidate.materials.Single(m=>m.id=="cloth").minimumContactRadius=radius;
