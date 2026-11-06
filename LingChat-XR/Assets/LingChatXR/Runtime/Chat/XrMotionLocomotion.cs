@@ -20,10 +20,11 @@ namespace LingChatXR.Chat
         bool locomotionOwned;
 #if UNITY_EDITOR
         Quaternion[] experimentFrame;
-        float experimentHipsOffset;
+        Quaternion[] experimentFrom;
+        float experimentHipsOffset,experimentFromY,experimentAge,experimentDuration;
         public float LocomotionHipsOffset => hips.localPosition.y-hipsRest.y;
         // PC 实验共用现有 locomotion 控制权；空间失效后同一入口拒收。
-        public bool SubmitLocomotionFrame(Dictionary<HumanBodyBones,Quaternion> pose, float hipsOffset)
+        public bool SubmitLocomotionFrame(Dictionary<HumanBodyBones,Quaternion> pose, float hipsOffset, float transitionSeconds=0)
         {
             if (!locomotionOwned || !spatialAllowed || disposed || !float.IsFinite(hipsOffset)) return false;
             if(experimentFrame==null)
@@ -36,6 +37,14 @@ namespace LingChatXR.Chat
                 if (!controlBones.TryGetValue(joint.Key,out var bone)) continue;
                 int index = Array.IndexOf(bones,bone);
                 if (index >= 0) experimentFrame[index] = joint.Value;
+            }
+            experimentDuration=Mathf.Max(0,transitionSeconds);
+            experimentAge=0;
+            if(experimentDuration>0)
+            {
+                experimentFrom??=new Quaternion[bones.Length];
+                Snapshot(experimentFrom);
+                experimentFromY=LocomotionHipsOffset;
             }
             experimentHipsOffset = hipsOffset;
             return true;
@@ -122,8 +131,19 @@ namespace LingChatXR.Chat
 #if UNITY_EDITOR
                 if(experimentFrame!=null)
                 {
-                    Write(experimentFrame);
-                    hips.localPosition += Vector3.up * experimentHipsOffset;
+                    experimentAge+=Mathf.Max(0,dt);
+                    if(experimentAge>=experimentDuration)
+                    {
+                        Write(experimentFrame);
+                        hips.localPosition+=Vector3.up*experimentHipsOffset;
+                    }
+                    else
+                    {
+                        float t=experimentAge/experimentDuration;
+                        for(int i=0;i<bones.Length;i++)
+                            if(bones[i]!=null)bones[i].localRotation=Quaternion.Slerp(experimentFrom[i],experimentFrame[i],t);
+                        hips.localPosition=hipsRest+Vector3.up*Mathf.Lerp(experimentFromY,experimentHipsOffset,t);
+                    }
                     return true;
                 }
 #endif

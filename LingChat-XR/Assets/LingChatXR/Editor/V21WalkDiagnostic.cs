@@ -38,6 +38,60 @@ namespace LingChatXR.Editor
                 Debug.Log("XR_M1_PASSED V21 walk");Finish(0);
             }catch(Exception e){File.WriteAllText(Path.Combine(Output,"failure.txt"),e.ToString());Finish(1);}
         }
+        // 固定空间根和物理步长，只切换人体姿态的帧间取样方法。
+        static void CompareCadence(FeiyuAvatar avatar,SpringPhysicsConfiguration config,JObject packet)
+        {
+            var service=UniVRM10.FastSpringBones.FastSpringBoneService.Instance;
+            var originalMode=service.UpdateType;
+            var player=avatar.Motions;
+            var rig=avatar.Instance.Runtime.ControlRig;
+            var hip=rig.GetBoneTransform(HumanBodyBones.Hips);
+            var results=new JArray();
+            var joints=config.bindings.Where(b=>b.material=="hair" || b.material=="cloth")
+                .SelectMany(b=>avatar.Instance.SpringBone.Springs[b.spring].Joints.SkipLast(1)
+                    .Select(j=>(part:b.material,bone:j.transform))).ToArray();
+            try
+            {
+                service.UpdateType=UniVRM10.FastSpringBones.FastSpringBoneService.UpdateTypes.Manual;
+                foreach(var source in new[]{"fixed","generated"})
+                {
+                    var rows=(JArray)(source=="fixed"?packet["request"]["frames"]:packet["generated"]);
+                    var poses=rows.Select(row=>((JObject)row["pose"]).Properties().ToDictionary(
+                        v=>(HumanBodyBones)Enum.Parse(typeof(HumanBodyBones),v.Name),
+                        v=>new Quaternion((float)v.Value[0],(float)v.Value[1],(float)v.Value[2],(float)v.Value[3]))).ToArray();
+                    foreach(bool smooth in new[]{false,true})
+                    {
+                        player.SetSpatialAllowed(true);
+                        if(!player.BeginLocomotion())throw new Exception("物理时序对照无法取得动作控制");
+                        void Submit(int index,float duration)
+                        {
+                            float height=(float)rows[index]["y"]/hip.parent.lossyScale.y;
+                            if(!player.SubmitLocomotionFrame(poses[index],height,duration))throw new Exception("姿势提交失败");
+                        }
+                        void Advance()
+                        {
+                            player.Step(1f/60);avatar.Instance.Runtime.Process();
+                            avatar.Physics.Prepare();service.ManualUpdate(1f/60);
+                        }
+                        avatar.Physics.RequestReset();
+                        Submit(0,0);
+                        for(int warm=0;warm<120;warm++)Advance();
+                        for(int step=0;step<=(rows.Count-1)*3;step++)
+                        {
+                            if(smooth && step%3==1)Submit(step/3+1,.05f);
+                            if(!smooth && step%3==0)Submit(step/3,0);
+                            Advance();
+                            results.Add(new JObject{["source"]=source,["smooth"]=smooth,["step"]=step,
+                                ["rot"]=new JArray(joints.Select(j=>new JArray(j.bone.localRotation.x,j.bone.localRotation.y,j.bone.localRotation.z,j.bone.localRotation.w)))});
+                        }
+                        player.EndLocomotion(true);
+                    }
+                }
+                File.WriteAllText(Path.Combine(Output,"cadence.json"),new JObject{
+                    ["parts"]=new JArray(joints.Select(j=>j.part)),["frames"]=results}.ToString());
+            }
+            finally{player.EndLocomotion(true);service.UpdateType=originalMode;avatar.Physics.RequestReset();}
+        }
         static void Finish(int code){SceneManager.sceneLoaded-=Select;EditorApplication.update-=Tick;EditorApplication.Exit(code);}
         static IEnumerator Check()
         {
@@ -57,6 +111,15 @@ namespace LingChatXR.Editor
             }
             for(int i=0;i<70;i++){Sample("place");if(i==1||i==20||i==69)LocomotionProbe.Capture(cam,"place-"+i);yield return null;}
             player.EndWelcome();
+            var cadencePath=Environment.GetEnvironmentVariable("XR_PHYSICS_CADENCE");
+            if(!string.IsNullOrEmpty(cadencePath))
+            {
+                var preparation=player.PrepareLocomotion();
+                while(!preparation.IsCompleted)yield return null;
+                if(!preparation.Result)throw new Exception(player.LocomotionStatus);
+                CompareCadence(avatar,config,JObject.Parse(File.ReadAllText(cadencePath)));
+                yield break;
+            }
             var start=FeiyuPreview.ToUnity(live.Interaction.Position);
             var go=live.Locomotion.GoTo(start+new Vector3(.32f,0,0));while(!go.IsCompleted)yield return null;
             if(!go.Result)throw new Exception(live.Locomotion.Status);

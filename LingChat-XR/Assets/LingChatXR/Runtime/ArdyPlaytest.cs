@@ -34,7 +34,7 @@ namespace LingChatXR.Editor
         public double FirstFrameSeconds {get; private set;}
         double nextTick,requested,changed,launched;
         int epoch, generation, serial, pending;
-        bool ready, active, prepared, acquired, priorManual, priorEnabled, controlsAutonomy, aligned, aligning, capturePending, streaming, side;
+        bool ready, active, prepared, acquired, priorManual, priorEnabled, controlsAutonomy, aligned, aligning, capturePending, captureGenerated, streaming, side;
         public bool Active => active;
         const string PrewarmKey="YuChat.ArdyUsedInEditorSession";
         public static void PrewarmForReturnVisit(FeiyuPreview preview)
@@ -125,6 +125,7 @@ namespace LingChatXR.Editor
         public void ChangeTarget()
         {
             if(!Valid || !prepared) return;
+            RememberGenerated();
             side=!side; ++epoch; pending=0; buffer.Clear(); changed=Now; FirstNewFrameMs=0;
             closestGoal=float.PositiveInfinity;unproductiveFrames=0;
             Status="按已播放历史改目标"; Request();
@@ -176,6 +177,8 @@ namespace LingChatXR.Editor
                 if(pending!=0 && Now-requested>12) throw new TimeoutException("ARDY 单步超时");
                 if(Now<nextTick) return;
                 nextTick=Math.Max(nextTick+.05,Now);
+                RememberGenerated();
+                if(streaming)Prefetch();
                 if(!streaming && pending==0 && history.Count<16)
                 {
                     avatar.Motions.SampleLocomotion("walk",phase);
@@ -193,7 +196,7 @@ namespace LingChatXR.Editor
                     if(changed>0){FirstNewFrameMs=(Now-changed)*1000;changed=0;}
                     streaming=true; Submitted++; Owner="ARDY"; Status="接步中";
                     if(Submitted==1)UnityEngine.Debug.Log("XR_ARDY_FIRST_FRAME model="+avatar.Package.model.sha256+" rttMs="+RoundTripMs.ToString("F0"));
-                    capturePending=true;
+                    captureGenerated=true;
                     if(Submitted==1)FirstFrameSeconds=Now-started;
                     Vector3 goal=TargetWorld(),position=FeiyuPreview.ToUnity(core.Position);
                     Vector3 pass=position-from;
@@ -209,7 +212,7 @@ namespace LingChatXR.Editor
                 }
                 else if(pending!=0) { Underruns++; Status="等待补帧"; }
                 // 试玩时端到端往返约 0.3 秒。八帧中消费一帧即预取，余七帧提供 350 ms 裕量。
-                if(!capturePending) Prefetch();
+                if(!capturePending && !captureGenerated) Prefetch();
             }
             catch(Exception e){End(e.Message);}
         }
@@ -241,6 +244,14 @@ namespace LingChatXR.Editor
             }
             catch(Exception e){End(e.Message);}
         }
+        // 到下一次提交前再取刚播过的姿势，避免把过渡首帧反馈为整个生成步的结果。
+        void RememberGenerated()
+        {
+            if(!captureGenerated)return;
+            captureGenerated=false;
+            Remember(CaptureRow());
+        }
+
         void Prefetch()
         {
             if(ready && history.Count==16 && pending==0 && buffer.Count<=7)Request();
@@ -330,13 +341,13 @@ namespace LingChatXR.Editor
                 var q=property.Value;
                 if(Enum.TryParse(property.Name,out HumanBodyBones b)) pose[b]=new Quaternion((float)q[0],(float)q[1],(float)q[2],(float)q[3]);
             }
-            if(!avatar.Motions.SubmitLocomotionFrame(pose,(float)row["y"]/Bone(HumanBodyBones.Hips).parent.lossyScale.y)) throw new InvalidOperationException("身体拒绝提交");
+            if(!avatar.Motions.SubmitLocomotionFrame(pose,(float)row["y"]/Bone(HumanBodyBones.Hips).parent.lossyScale.y,.05f)) throw new InvalidOperationException("身体拒绝提交");
         }
         void Revoke()=>End("交互已接管");
         public void End(string reason="已停止")
         {
             if(!active) return;
-            ++epoch;capturePending=false;active=false;prepared=false;pending=0;history.Clear();buffer.Clear();
+            ++epoch;captureGenerated=false;capturePending=false;active=false;prepared=false;pending=0;history.Clear();buffer.Clear();
             if(acquired && avatar) avatar.Motions.SpatialControlRevoked-=Revoke;
             if(acquired && avatar && live && live.Avatar==avatar)
             {
