@@ -21,12 +21,16 @@ namespace LingChatXR.Chat
 #if UNITY_EDITOR
         Quaternion[] experimentFrame;
         float experimentHipsOffset;
+        public float LocomotionHipsOffset => hips.localPosition.y-hipsRest.y;
         // PC 实验共用现有 locomotion 控制权；空间失效后同一入口拒收。
         public bool SubmitLocomotionFrame(Dictionary<HumanBodyBones,Quaternion> pose, float hipsOffset)
         {
             if (!locomotionOwned || !spatialAllowed || disposed || !float.IsFinite(hipsOffset)) return false;
-            experimentFrame ??= new Quaternion[bones.Length];
-            Array.Copy(rest,experimentFrame,bones.Length);
+            if(experimentFrame==null)
+            {
+                experimentFrame=new Quaternion[bones.Length];
+                Snapshot(experimentFrame);
+            }
             foreach (var joint in pose)
             {
                 if (!controlBones.TryGetValue(joint.Key,out var bone)) continue;

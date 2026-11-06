@@ -88,7 +88,8 @@ namespace LingChatXR
             attentionAge=angle>75?attentionAge+Mathf.Min(dt,.05f):0;
             if(attentionAge>=.65f){attentionAge=0;_=FaceViewer();}
         }
-        async Task<bool> Begin(Vector3 destination,bool faceOnly)
+        internal Task<bool> FacePoint(Vector3 point)=>Begin(FeiyuPreview.ToUnity(preview.Interaction.Position),true,point);
+        async Task<bool> Begin(Vector3 destination,bool faceOnly,Vector3? facePoint=null)
         {
             if(preview==null||!preview.Ready||preview.SizeEditing||preview.Interaction.State!=PetState.Idle||!preview.Interaction.PlaneConfirmed||!Finite(destination))return false;
             var selectedCore=preview.Interaction;var avatar=preview.Avatar;
@@ -123,7 +124,7 @@ namespace LingChatXR
             bound=avatar;core=selectedCore;previousAutonomy=core.AutonomousEnabled;core.SetAutonomousEnabled(true);restoring=true;generation=core.Generation;
             target=destination;speed=walkTime=turnTime=0;manualFacing=false;attentionAge=0;running=false;
             if(!faceOnly)RegisterCommand();
-            var direction=Vector3.ProjectOnPlane((faceOnly?preview.ViewCamera.transform.position:destination)-FeiyuPreview.ToUnity(core.Position),Vector3.up);
+            var direction=Vector3.ProjectOnPlane((faceOnly?(facePoint??preview.ViewCamera.transform.position):destination)-FeiyuPreview.ToUnity(core.Position),Vector3.up);
             if(direction.sqrMagnitude<.0001f){bound.Motions.EndLocomotion();Finish();return true;}
             ConfigureTurn(Quaternion.LookRotation(direction.normalized,Vector3.up));
             if(faceOnly){State=Phase.Facing;Status="转身看向你";return true;}

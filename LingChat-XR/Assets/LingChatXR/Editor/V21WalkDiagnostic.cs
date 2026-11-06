@@ -97,9 +97,17 @@ namespace LingChatXR.Editor
                 .Select(j=>j.transform).ToArray();
             var hem=config.bindings.Where(b=>b.material=="cloth")
                 .Select(b=>avatar.Instance.SpringBone.Springs[b.spring].Joints.Last().transform).ToArray();
+            Vector3? seedStart=null;
+            Vector3 seedTravel=Vector3.zero;
             void CaptureDemo()
             {
                 if(stream.Owner=="角色待机")return;
+                if(stream.Owner=="固定走路")
+                {
+                    var pos=FeiyuPreview.ToUnity(live.Interaction.Position);
+                    seedStart??=pos;
+                    seedTravel=Quaternion.Inverse(live.SpatialRotation)*(pos-seedStart.Value);
+                }
                 var skeleton=avatar.Instance.Runtime.ControlRig;
                 if(stream.Owner=="ARDY" && lastPose!=stream.Submitted){
                     poses.Add((skeleton.Bones.ToDictionary(b=>b.Key,b=>b.Value.ControlBone.localRotation),
@@ -121,6 +129,9 @@ namespace LingChatXR.Editor
             while(stream.Active && stream.Submitted<20){CaptureDemo();yield return null;}
             File.WriteAllText(Path.Combine(Output,"ardy.txt"),stream.Status+" frames="+stream.Submitted+" owner="+stream.Owner);
             if(stream.Submitted<12)throw new Exception(stream.Status);
+            if(seedTravel.z<=0 || Mathf.Abs(seedTravel.x)>seedTravel.z*.05f)
+                throw new Exception("固定步态未沿角色前方移动："+seedTravel);
+
             C0SettingsProbe.CaptureCombined(Path.Combine(Output,"Game-generated.png"),view,live);
             Click();int before=stream.Submitted;
             while(stream.Active&&stream.Submitted<before+40){CaptureDemo();yield return null;}

@@ -1,4 +1,6 @@
 """仅供 PC 试玩。固定本机进程的标准输入输出承载控制数据，每次输出八帧。"""
+from pathlib import Path
+import os
 import json
 import sys
 import time
@@ -52,11 +54,15 @@ def collapse(quaternions, available, parents):
 if __name__ == "__main__":
     model = load_model("core8",device="cuda",text_encoder=False,checkpoints_dir=str(CACHE/"checkpoints"))
     reply(ready=True)
+    capture = os.environ.get("XR_ARDY_CAPTURE_SEED")
     for line in sys.stdin:
         request = json.loads(line)
         started = time.perf_counter()
         try:
             rows = generate(model,request)
+            if capture:
+                Path(capture).write_text(json.dumps(dict(request=request, generated=rows)), encoding="utf-8")
+                capture = None
             reply(ticket=request["ticket"],rows=rows,ms=1000*(time.perf_counter()-started))
         except Exception as error:
             reply(ticket=request["ticket"],error=str(error))
