@@ -42,6 +42,7 @@ namespace LingChatXR.Editor
         static IEnumerator CompareCadence(FeiyuAvatar avatar,SpringPhysicsConfiguration config,JObject packet)
         {
             var service=UniVRM10.FastSpringBones.FastSpringBoneService.Instance;
+            var interaction=Object.FindAnyObjectByType<FeiyuPreview>().Interaction;
             var originalMode=service.UpdateType;
             var freeze=avatar.FreezePresentation;avatar.FreezePresentation=true;
             var player=avatar.Motions;
@@ -74,6 +75,7 @@ namespace LingChatXR.Editor
                         void Advance()
                         {
                             player.Step(1f/60);avatar.Instance.Runtime.Process();
+                            avatar.Physics.SetSpatialMotion(interaction,1f/60,player.LocomotionOwned);
                             avatar.Physics.Prepare();service.ManualUpdate(1f/60);
                         }
                         avatar.Physics.RequestReset();
@@ -168,6 +170,41 @@ namespace LingChatXR.Editor
                     ["bones"]=new JArray(joints.Select(j=>j.name)),["frames"]=rows}.ToString());
             }
             player.EndWelcome();
+            if(Environment.GetEnvironmentVariable("XR_IDLE_OUTLINE")=="1")
+            {
+                avatar.FreezePresentation=true;
+                var idleSolver=UniVRM10.FastSpringBones.FastSpringBoneService.Instance;
+                var prev=idleSolver.UpdateType;
+                idleSolver.UpdateType=UniVRM10.FastSpringBones.FastSpringBoneService.UpdateTypes.Manual;
+                cam.orthographicSize=avatar.HeightMeters*.58f;
+                center=avatar.Instance.transform.position+Vector3.up*avatar.HeightMeters*.50f;
+                cam.transform.position=center+avatar.transform.forward*.75f+Vector3.up*.13f;cam.transform.LookAt(center);
+                try
+                {
+                    var cloth=config.bindings.Where(b=>b.material=="cloth").SelectMany(b=>avatar.Instance.SpringBone.Springs[b.spring].Joints.SkipLast(1)).ToArray();
+                    Quaternion[] settled=null;
+                    foreach(var mode in new[]{"live","bind","native","material","leg"})
+                    {
+                        var cfg=JsonUtility.FromJson<SpringPhysicsConfiguration>(JsonUtility.ToJson(config));
+                        if(mode=="material")cfg.materials.Single(m=>m.id=="cloth").authoredGroundResponse=true;
+                        if(mode=="leg")cfg.colliders=cfg.colliders.Where(c=>string.IsNullOrEmpty(c.capsuleEndBone)).ToArray();
+                        avatar.Physics.ConfigureMaterials(mode=="native"?null:cfg);
+                        avatar.Physics.RequestReset();avatar.Instance.Runtime.Process();avatar.Physics.Prepare();
+                        if(mode!="bind")for(int i=0;i<150;i++){avatar.Physics.Prepare();idleSolver.ManualUpdate(1f/60);}
+                        yield return null;
+                        LocomotionProbe.Capture(cam,"idle-"+mode);
+                        if(mode=="live")settled=cloth.Select(j=>j.transform.localRotation).ToArray();
+                        if(mode=="native" && config.materials.Any(m=>m.authoredIdleResponse))
+                        {
+                            float peak=cloth.Select((j,i)=>Quaternion.Angle(settled[i],j.transform.localRotation)).Max();
+                            File.WriteAllText(Path.Combine(Output,"idle-error.txt"),peak.ToString("F3"));
+                            if(peak>1f)throw new Exception("静止裙骨偏离同姿势的原模型："+peak);
+                        }
+                    }
+                }
+                finally{avatar.Physics.ConfigureMaterials(config);avatar.FreezePresentation=false;idleSolver.UpdateType=prev;avatar.Physics.RequestReset();}
+                yield break;
+            }
             var cadencePath=Environment.GetEnvironmentVariable("XR_PHYSICS_CADENCE");
             if(!string.IsNullOrEmpty(cadencePath))
             {

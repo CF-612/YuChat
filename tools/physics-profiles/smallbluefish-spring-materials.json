@@ -93,6 +93,7 @@
   "materials": [
     {
       "id": "cloth",
+      "authoredIdleResponse": true,
       "minimumContactRadius": 0.035,
       "useWalkingClearance": true,
       "drag": 0.7,

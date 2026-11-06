@@ -22,6 +22,11 @@ namespace LingChatXR
         readonly Dictionary<Transform,List<VRM10SpringBoneCollider>> sphereChains=new();
         readonly List<(int index,BlittableCollider calibrated,Vector3 offset,float radius)> groundSpheres=new();
         readonly HashSet<Transform> authoredGroundJoints=new();
+        readonly HashSet<Transform> authoredIdleJoints=new();
+        readonly Dictionary<Transform,List<VRM10SpringBoneCollider>> idleChains=new();
+        readonly List<(int index,BlittableCollider calibrated,Vector3 offset,float radius,float standing,float walking)> idleSpheres=new();
+        float appliedIdleBlend=-1;
+        float IdleBlend=>groundBlend*(1-gaitBlend);
         float gaitBlend,groundBlend=1,appliedGroundBlend=-1;
         public int ColliderRebuildCount { get; private set; }
         public int ConfiguredJointCount => materials.Count;
@@ -81,10 +86,11 @@ namespace LingChatXR
             if(liveBuffer!=null && liveBuffer==configured)
             {
                 var entries=liveBuffer.Colliders;
+                foreach(var slot in idleSpheres)entries[slot.index]=slot.calibrated;
                 foreach(var slot in groundSpheres)entries[slot.index]=slot.calibrated;
                 foreach(var slot in gaitSlots)entries[slot.index]=slot.original;
             }
-            groundSpheres.Clear();sphereChains.Clear();
+            groundSpheres.Clear();sphereChains.Clear();idleChains.Clear();idleSpheres.Clear();authoredIdleJoints.Clear();
             gaitCapsules.Clear();gaitSlots.Clear();gaitRoots.Clear();authoredGroundJoints.Clear();
             materials.Clear();configured=null;
             ConfigureColliders(configuration);
@@ -96,17 +102,18 @@ namespace LingChatXR
                 var material=System.Array.Find(configuration.materials,m=>m!=null&&m.id==binding.material&&m.Valid);
                 if(material==null||chain.Joints.Count==0||chain.Joints[0].transform.name!=binding.root)
                 {Debug.LogWarning("物理材质绑定无效，保留作者配置："+binding.root);continue;}
-                if(material.authoredGroundSpheres)
+                if(material.authoredGroundSpheres || material.authoredIdleResponse)
                 {
                     var colliders=new List<VRM10SpringBoneCollider>();
                     foreach(var group in chain.ColliderGroups)colliders.AddRange(group.Colliders);
-                    sphereChains[chain.Joints[0].transform]=colliders;
+                    (material.authoredIdleResponse?idleChains:sphereChains)[chain.Joints[0].transform]=colliders;
                 }
                 if(material.useWalkingClearance)gaitRoots.Add(chain.Joints[0].transform);
                 for(int i=0;i<chain.Joints.Count;i++)
                 {
                     var joint=chain.Joints[i].transform;var b=source[joint];
                     if(material.authoredGroundResponse)authoredGroundJoints.Add(joint);
+                    if(material.authoredIdleResponse)authoredIdleJoints.Add(joint);
                     float t=chain.Joints.Count<=1?0:(float)i/(chain.Joints.Count-1);
                     bool authored=b.anglelimitType!=AnglelimitTypes.None;
                     materials[joint]=new BlittableJointMutable(Mathf.Lerp(material.rootStiffness,material.tipStiffness,t),material.gravity,
@@ -171,7 +178,7 @@ namespace LingChatXR
         void BindGaitColliders(FastSpringBoneCombinedBuffer buffer)
         {
             gaitSlots.Clear();
-            groundSpheres.Clear();
+            groundSpheres.Clear();idleSpheres.Clear();
             foreach(var spring in buffer.Springs)
             {
                 if(spring.logicSpan.count==0)continue;
@@ -179,7 +186,8 @@ namespace LingChatXR
                 int root=buffer.Logics[spring.logicSpan.startIndex].headTransformIndex;
                 var rootBone=buffer.TransformAccessArray[offset+root];
                 // 同一头骨可能有多个球，使用 UniVRM 展平后的组内顺序匹配。
-                if(sphereChains.TryGetValue(rootBone,out var spheres) && spheres.Count==spring.colliderSpan.count)
+                bool idle=idleChains.TryGetValue(rootBone,out var spheres);
+                if((idle || sphereChains.TryGetValue(rootBone,out spheres)) && spheres.Count==spring.colliderSpan.count)
                 {
                     for(int j=0;j<spheres.Count;j++)
                     {
@@ -187,8 +195,16 @@ namespace LingChatXR
                         var native=buffer.Colliders[index];
                         var sphere=spheres[j];
                         if(colliderSource.TryGetValue(sphere,out var original) && original.type==VRM10SpringBoneColliderTypes.Sphere &&
-                            sphere.ColliderType==original.type && sphere.transform==buffer.TransformAccessArray[offset+native.transformIndex])
-                            groundSpheres.Add((index,native,original.offset,original.radius));
+                            (sphere.ColliderType==original.type || idle && sphere.ColliderType==VRM10SpringBoneColliderTypes.Capsule) && sphere.transform==buffer.TransformAccessArray[offset+native.transformIndex])
+                        {
+                            if(idle)
+                            {
+                                bool hasGait=gaitCapsules.TryGetValue(sphere.transform,out var gait) && gait.collider==sphere && gaitRoots.Contains(rootBone);
+                                idleSpheres.Add((index,native,original.offset,original.radius,
+                                    hasGait?gait.standingRadius:native.radius,hasGait?gait.walkingRadius:native.radius));
+                            }
+                            else groundSpheres.Add((index,native,original.offset,original.radius));
+                        }
                     }
                 }
                 if(!gaitRoots.Contains(rootBone))continue;
@@ -241,7 +257,7 @@ namespace LingChatXR
             combiner.ReconstructIfDirty(default).Complete();
             var buffer=combiner.Combined;if(buffer==null)return;
             if(configured!=buffer)RequestReset();
-            if(configured!=buffer||!Mathf.Approximately(lastScale,scale)||configuredAir!=MotionAirEnabled || (authoredGroundJoints.Count>0 && !Mathf.Approximately(groundBlend,appliedGroundBlend)))
+            if(configured!=buffer||!Mathf.Approximately(lastScale,scale)||configuredAir!=MotionAirEnabled || (authoredIdleJoints.Count>0 && !Mathf.Approximately(IdleBlend,appliedIdleBlend)) || (authoredGroundJoints.Count>0 && !Mathf.Approximately(groundBlend,appliedGroundBlend)))
             {
                 foreach(var entry in source)
                 {
@@ -250,16 +266,16 @@ namespace LingChatXR
                     // 原生 Cone 约束作为通用运动模式的最大弯曲范围；已有作者角限优先。
                     // 无约束链直接受逆向风力会翻转 180°，不能只加大外力。
                     bool fallbackLimit=MotionAirEnabled&&b.anglelimitType==AnglelimitTypes.None;
-                    float blend=authoredGroundJoints.Contains(entry.Key)?groundBlend:0;
+                    float blend=authoredGroundJoints.Contains(entry.Key)?groundBlend:authoredIdleJoints.Contains(entry.Key)?IdleBlend:0;
                     var authored=entry.Value;
                     Vector3 gravity=Vector3.Lerp((Vector3)b.gravityDir*b.gravityPower,(Vector3)authored.gravityDir*authored.gravityPower,blend);
                     instance.Runtime.SpringBone.SetJointLevel(entry.Key,new BlittableJointMutable(
                         Mathf.Lerp(b.stiffnessForce,authored.stiffnessForce,blend),gravity.magnitude,gravity.normalized,
                         Mathf.Lerp(b.dragForce,authored.dragForce,blend),
-                        b.radius*radiusScale,fallbackLimit?(float)AnglelimitTypes.Cone:(float)b.anglelimitType,fallbackLimit?30f*Mathf.Deg2Rad:b.anglelimit1,b.anglelimit2,b.anglelimitOffset));
+                        Mathf.Lerp(b.radius,authored.radius,authoredIdleJoints.Contains(entry.Key)?blend:0)*radiusScale,fallbackLimit?(float)AnglelimitTypes.Cone:(float)b.anglelimitType,fallbackLimit?30f*Mathf.Deg2Rad:b.anglelimit1,b.anglelimit2,b.anglelimitOffset));
                 }
                 if(configured!=buffer) BindGaitColliders(buffer);
-                configured=buffer;lastScale=scale;configuredAir=MotionAirEnabled;appliedGroundBlend=groundBlend;
+                configured=buffer;lastScale=scale;configuredAir=MotionAirEnabled;appliedGroundBlend=groundBlend;appliedIdleBlend=IdleBlend;
             }
             // 只改变现有大腿胶囊的接触距离，不重建物理世界。退出行走后回到角色包的静止半径。
             var colliders=buffer.Colliders;
@@ -276,6 +292,16 @@ namespace LingChatXR
                 float radius=Mathf.Lerp(c.radius,Mathf.Lerp(slot.standingRadius,slot.walkingRadius,gaitBlend),groundBlend);
                 if(!Mathf.Approximately(colliders[slot.index].radius,radius))
                     colliders[slot.index]=new BlittableCollider(c.offset,radius,c.tailOrNormal,c.colliderType,c.transformIndex);
+            }
+            // 站定时还原 VRM 球心与半径。胶囊的两端收拢后等价于同一原始球。
+            foreach(var slot in idleSpheres)
+            {
+                var c=slot.calibrated;
+                var center=Vector3.Lerp(c.offset,slot.offset,IdleBlend);
+                var tail=c.colliderType==BlittableColliderType.Capsule
+                    ?Vector3.Lerp(c.tailOrNormal,slot.offset,IdleBlend):(Vector3)c.tailOrNormal;
+                var activeRadius=Mathf.Lerp(c.radius,Mathf.Lerp(slot.standing,slot.walking,gaitBlend),groundBlend);
+                colliders[slot.index]=new BlittableCollider(center,Mathf.Lerp(activeRadius,slot.radius,IdleBlend),tail,c.colliderType,c.transformIndex);
             }
             bool hold=paused||recoveringLargeStep;
             instance.Runtime.SpringBone.SetModelLevel(instance.transform,new BlittableModelLevel(externalForce:MotionAirEnabled&&!hold?MotionAirForce:Vector3.zero,stopSpringBoneWriteback:hold,supportsScalingAtRuntime:true));

@@ -128,3 +128,22 @@ $env:XR_REFERENCE_VIEWS='1'
 ```
 
 本次本地证据位于 evidence/model-final-live、evidence/model-final-gaits 和 evidence/model-delivery-views。静态绑姿检查与 24 姿态严格对照可复现；新的实时生成和延迟会随机器负载与采样相位变化。
+
+## 2026-11-06 正面静止围裙被收尖的回归
+
+使用同一 V21、同一站姿、同一正面机位，比较当前运行配置、绑定姿势、原 VRM 物理、只还原裙料参数、只撤去腿胶囊五组。未启动 ARDY 时，原运行配置已经复现小鲸鱼被横向压窄，围裙下边收尖。只换原裙料仍会被腿部碰撞顶起。原模型物理与绑定姿势呈现相同的圆弧。
+
+原运行配置把步态胶囊、接触半径和裙料重力也用于站定。现在通过角色包可选项 authoredIdleResponse 在站定时恢复作者的球形碰撞位置、半径及裙料响应，开始走路再平滑转到步态碰撞。沿用现有弹簧服务与同一角色网格。识别行走使用实际步态控制权；欢迎动作等普通动画的全身占用标记会将静站误判为走路，已用同姿势回归排除这一条件。
+
+隔离 PC 正面截图中，小鲸鱼蓝色区域横宽从 69 像素恢复到 95 像素，原模型对照为 95 像素。按每根绑定的裙骨核验，稳定站姿与原 VRM 物理最大局部角差为 0.000 度。正常步态与生成步态的 24 姿态重放仍测得累计 159 对三角面相交。此批验收针对静态裙形与行走切换。
+
+从仓库根运行：
+
+```powershell
+./tools/prepare-spring-materials.ps1
+$env:XR_IDLE_OUTLINE='1'
+./tools/run-m1-check.ps1 -EvidenceDirectory evidence/my-idle-apron -Method LingChatXR.Editor.V21WalkDiagnostic.Run
+Remove-Item Env:XR_IDLE_OUTLINE
+```
+
+检查目录里的 idle-live.png、idle-native.png 和 idle-error.txt。实际接步、改目标、到达待机、抓取打断使用上一节的 XR_V21_TEST_ARDY 和 XR_ARDY_STANCE 入口。本批未打包。
