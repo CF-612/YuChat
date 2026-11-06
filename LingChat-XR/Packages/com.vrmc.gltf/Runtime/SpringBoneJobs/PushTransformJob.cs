@@ -17,7 +17,8 @@ namespace UniGLTF.SpringBoneJobs
 
         public void Execute(int index, TransformAccess transform)
         {
-            transform.rotation = Transforms[index].rotation;
+            // 父子节点可能在同一批任务内先后写回。直接使用求解器已算好的局部旋转，避免父骨再转一次。
+            transform.localRotation = Transforms[index].localRotation;
         }
     }
 }

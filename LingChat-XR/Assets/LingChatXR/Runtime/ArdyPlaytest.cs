@@ -126,7 +126,7 @@ namespace LingChatXR.Editor
         {
             if(!Valid || !prepared) return;
             RememberGenerated();
-            side=!side; ++epoch; pending=0; buffer.Clear(); changed=Now; FirstNewFrameMs=0;
+            rootMoving=false;side=!side; ++epoch; pending=0; buffer.Clear(); changed=Now; FirstNewFrameMs=0;
             closestGoal=float.PositiveInfinity;unproductiveFrames=0;
             Status="按已播放历史改目标"; Request();
         }
@@ -175,40 +175,35 @@ namespace LingChatXR.Editor
                     Owner="固定走路";Status="采集 16 帧实际步态";
                 }
                 if(pending!=0 && Now-requested>12) throw new TimeoutException("ARDY 单步超时");
+                bool seeding=!streaming && pending==0 && history.Count<16;
+                if(seeding)
+                {
+                    float dt=Mathf.Min(Time.unscaledDeltaTime,.05f);
+                    phase+=dt;
+                    avatar.Motions.SampleLocomotion("walk",phase);
+                    var next=Vector3.MoveTowards(FeiyuPreview.ToUnity(core.Position),TargetWorld(),speed*dt);
+                    if(!live.TryAutonomousPose(next,basis,generation))throw new InvalidOperationException("前方缺少接步空间");
+                }
+                if(rootMoving)
+                {
+                    AdvanceRoot();
+                    if(!active || rootMoving)return;
+                }
                 if(Now<nextTick) return;
                 nextTick=Math.Max(nextTick+.05,Now);
                 RememberGenerated();
                 if(streaming)Prefetch();
-                if(!streaming && pending==0 && history.Count<16)
-                {
-                    avatar.Motions.SampleLocomotion("walk",phase);
-                    Vector3 next=Vector3.MoveTowards(FeiyuPreview.ToUnity(core.Position),TargetWorld(),speed*.05f);
-                    if(!live.TryAutonomousPose(next,basis,generation)) throw new InvalidOperationException("前方缺少接步空间");
-                    capturePending=true;
-                    phase+=.05f;
-                }
+                if(seeding)capturePending=true;
                 else if(buffer.Count>0)
                 {
                     JObject row=buffer.Dequeue();
                     if((int)row["epoch"]!=epoch || !Valid) {Rejected++;return;}
-                    Vector3 from=FeiyuPreview.ToUnity(core.Position);
                     Apply(row);
                     if(changed>0){FirstNewFrameMs=(Now-changed)*1000;changed=0;}
                     streaming=true; Submitted++; Owner="ARDY"; Status="接步中";
                     if(Submitted==1)UnityEngine.Debug.Log("XR_ARDY_FIRST_FRAME model="+avatar.Package.model.sha256+" rttMs="+RoundTripMs.ToString("F0"));
                     captureGenerated=true;
                     if(Submitted==1)FirstFrameSeconds=Now-started;
-                    Vector3 goal=TargetWorld(),position=FeiyuPreview.ToUnity(core.Position);
-                    Vector3 pass=position-from;
-                    float t=Mathf.Clamp01(Vector3.Dot(goal-from,pass)/Mathf.Max(pass.sqrMagnitude,1e-10f));
-                    if(Vector3.Distance(goal,from+pass*t)<Mathf.Max(core.RadiusMeters*.28f,speed*.065f))
-                    {
-                        End("已到达 · 回到待机");
-                        return;
-                    }
-                    float distance=Vector3.Distance(position,goal);
-                    if(distance<closestGoal-leg*.025f){closestGoal=distance;unproductiveFrames=0;}
-                    else if(++unproductiveFrames>=50){End("未继续接近目标 · 回到待机");return;}
                 }
                 else if(pending!=0) { Underruns++; Status="等待补帧"; }
                 // 试玩时端到端往返约 0.3 秒。八帧中消费一帧即预取，余七帧提供 350 ms 裕量。
@@ -331,10 +326,33 @@ namespace LingChatXR.Editor
                 row["epoch"]=epoch;buffer.Enqueue(row);
             }
         }
+        Vector3 rootFrom,rootTo;
+        double rootStart;
+        bool rootMoving;
+        void AdvanceRoot()
+        {
+            float t=Mathf.Clamp01((float)((Now-rootStart)/.05));
+            var position=Vector3.Lerp(rootFrom,rootTo,t);
+            if(!live.TryAutonomousPose(position,basis,generation))throw new InvalidDataException("桌面拒绝生成根");
+            var goal=TargetWorld();
+            var delta=position-rootFrom;
+            float fraction=Mathf.Clamp01(Vector3.Dot(goal-rootFrom,delta)/Mathf.Max(delta.sqrMagnitude,1e-10f));
+            if(Vector3.Distance(goal,rootFrom+delta*fraction)<Mathf.Max(core.RadiusMeters*.28f,speed*.065f))
+            {
+                End("已到达 · 回到待机");
+                return;
+            }
+            if(t<1)return;
+            rootMoving=false;
+            float distance=Vector3.Distance(position,goal);
+            if(distance<closestGoal-leg*.025f){closestGoal=distance;unproductiveFrames=0;}
+            else if(++unproductiveFrames>=50)End("未继续接近目标 · 回到待机");
+        }
         void Apply(JObject row)
         {
             Vector3 next=center+basis*Vector(row["root"]);
-            if(!Valid || !live.TryAutonomousPose(next,basis,generation)) throw new InvalidDataException("桌面拒绝生成根");
+            if(!Valid || !core.ContainsFootprint(FeiyuPreview.ToCore(next),core.RadiusMeters))throw new InvalidDataException("桌面拒绝生成根");
+            rootFrom=FeiyuPreview.ToUnity(core.Position);rootTo=next;rootStart=Now;rootMoving=true;
             var pose=new Dictionary<HumanBodyBones,Quaternion>();
             foreach(var property in ((JObject)row["pose"]).Properties())
             {
@@ -347,7 +365,7 @@ namespace LingChatXR.Editor
         public void End(string reason="已停止")
         {
             if(!active) return;
-            ++epoch;captureGenerated=false;capturePending=false;active=false;prepared=false;pending=0;history.Clear();buffer.Clear();
+            ++epoch;rootMoving=false;captureGenerated=false;capturePending=false;active=false;prepared=false;pending=0;history.Clear();buffer.Clear();
             if(acquired && avatar) avatar.Motions.SpatialControlRevoked-=Revoke;
             if(acquired && avatar && live && live.Avatar==avatar)
             {

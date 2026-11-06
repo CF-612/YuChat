@@ -98,3 +98,33 @@ $env:XR_V21_TEST_ARDY='1'
 ```
 
 本地验证证据：evidence/v21-gameplay-verified 中的 Unity 日志、spring.json、coverage.json、ardy.txt、demo-timeline.json，以及 V21-ARDY-menu.mp4。仅 PC 源码与本地模型配置更新，本批未创建安装包。
+
+## 2026-11-06 同一 V21、同一姿态的物理回归
+
+固定 V21、渲染机位、步长和碰撞配置，回放 16 个原走路姿态与 8 个真实 Core8 姿态。旧配置中裙料启用了 authoredGroundResponse，地面站立和走路时会覆盖项目裙料的重力、阻尼和刚度。V21 的八条裙链原始重力为 0、刚度为 8，播放普通动作也能复现围裙被撑高。最终设置只对裙料撤回这一项覆盖，保留发束原始地面响应以及既有腿部胶囊。相同抬腿帧恢复垂落；24 个采样姿态中，真正相交的裙腿三角面对累计从 330 降到 159（内裤 132、皮肤 27）。同一 V21 改用 ARDY 接入前提交 38fa258 的物理配置则为 11194 对。固定动作与生成动作均能触发碰撞差异。
+
+ARDY 的人体姿态已有插值，但桌面位置曾在每个 20 Hz 样本到来时整步跳变。裙链在世界空间保存上一次位置，这种移动会直接进入下一物理步。固定动作采样期间已按显示帧推进步态与空间位置，生成期间将空间位置与人体姿态在同一个 50 ms 段内推进；抓取、改目标和结束会取消旧位移。真实 PC Play 回归实际播到第 20 帧改目标、播到第 60 帧；另一次从出发走到目标，恢复待机，抓取能打断待返回的生成。冷启动首帧 17.88 秒，热启动 1.59 秒，改目标首帧 314 毫秒。等待生成与物理验收分开记录。
+
+原生批量写回对父子节点写世界旋转，实测求解缓冲与最终局部旋转最大相差 5.24°（尾鳍）。改用求解器已经算出的局部旋转后，测试内同帧最大差值为 0°。该差异在尾鳍最明显；同批稳定回放的主要发束变化小于 0.01°，不能将尾鳍的测量归到头发。用同一人体姿态将五条主发束临时复原到绑定姿势，分别截取物理开启的背面和原发型。首次放置、模拟编辑器焦点切换、真实接步与返回待机均已单独采样。真实桌面鼠标切窗及 Quest 佩戴体验属于其他验收范围。
+
+单独检查原始 VRM 的默认节点、全部蒙皮权重与逆绑定矩阵，不启动 Unity、不运行动作。深蓝裙片与皮肤已有 42 对三角面相交，与白色内裤已有 99 对。进一步抽取 39 个实际姿态（生成转向、行走、蹦跳、跑步、待机），最终配置仍累计 393 对相交。计数含衣内遮挡，不能换算为画面上的破洞数。未采用把整圈碰撞加大来换取几何计数归零的做法。模型侧若处理，优先检查深蓝裙片 Material_a72e026a_7d32_4fba_b21a_b46e29392241 内侧与 Skin_FaceMatched_Candidate / InnerShorts_OrdinaryOpaqueWhite 的贴合和蒙皮。原 VRM 保留。
+
+复现可按以下顺序在仓库根目录运行，使用本机已有的 Core8 与含 NumPy、SciPy 的 Python 环境。先用 prepare-spring-materials 更新本地角色包的 manifest。图片、动作数据与模型均保存在本机。
+
+```powershell
+./tools/prepare-spring-materials.ps1
+$env:XR_ARDY_CAPTURE_SEED = Join-Path $PWD '.cache/ardy-physics-replay.json'
+$env:XR_V21_TEST_ARDY='1'
+$env:XR_ARDY_STANCE='1'
+$env:XR_SKIRT_SIDE='1'
+$env:XR_FOCUS_REGRESSION='1'
+./tools/run-m1-check.ps1 -EvidenceDirectory evidence/my-ardy-live -Method LingChatXR.Editor.V21WalkDiagnostic.Run
+$env:XR_PHYSICS_CADENCE=$env:XR_ARDY_CAPTURE_SEED
+$env:XR_REPLAY_SURFACES='1'
+$env:XR_REFERENCE_VIEWS='1'
+./tools/run-m1-check.ps1 -EvidenceDirectory evidence/my-ardy-replay -Method LingChatXR.Editor.V21WalkDiagnostic.Run
+& .cache/video-motion/worker311/Scripts/python.exe tools/check-skirt-surfaces.py evidence/my-ardy-replay
+& .cache/video-motion/worker311/Scripts/python.exe tools/check-skirt-surfaces.py --reference LingChat-XR/Assets/StreamingAssets/Characters/local-smallbluefish-alpha2/model.vrm tools/physics-profiles/smallbluefish-spring-materials.json
+```
+
+本次本地证据位于 evidence/model-final-live、evidence/model-final-gaits 和 evidence/model-delivery-views。静态绑姿检查与 24 姿态严格对照可复现；新的实时生成和延迟会随机器负载与采样相位变化。

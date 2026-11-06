@@ -4,6 +4,8 @@ from collections import Counter, defaultdict
 import json
 from pathlib import Path
 import struct
+import sys
+from functools import cache
 
 import numpy as np
 from scipy.spatial import cKDTree
@@ -61,7 +63,73 @@ def count_crossings(a, b):
 
 
 def report(path):
-    meshes = load(path)
+    return report_meshes(load(path), path)
+
+
+def reference_pose(model, profile):
+    """直接读取 VRM 的默认节点和逆绑定矩阵，绕过 Unity、动作和弹簧。"""
+    sys.path.insert(0, str(Path(__file__).parent / "video-motion"))
+    from audit_model import read_glb, accessor
+    from scipy.spatial.transform import Rotation
+
+    doc, binary = read_glb(model)
+    def values(index):
+        return np.asarray(list(accessor(doc, binary, index)))
+
+    nodes = doc["nodes"]
+    parents = {child: i for i, n in enumerate(nodes) for child in n.get("children", [])}
+    @cache
+    def world(index):
+        node = nodes[index]
+        if "matrix" in node:
+            local = np.array(node["matrix"]).reshape(4, 4).T
+        else:
+            local = np.eye(4)
+            rotation = Rotation.from_quat(node.get("rotation", [0, 0, 0, 1]))
+            local[:3, :3] = rotation.as_matrix() @ np.diag(node.get("scale", [1, 1, 1]))
+            local[:3, 3] = node.get("translation", [0, 0, 0])
+        return world(parents[index]) @ local if index in parents else local
+
+    springs = doc["extensions"]["VRMC_springBone"]["springs"]
+    cloth = set()
+    for binding in json.loads(profile.read_text(encoding="utf-8-sig"))["bindings"]:
+        if binding["material"] == "cloth":
+            joints = springs[binding["spring"]]["joints"]
+            if nodes[joints[0]["node"]]["name"] != binding["root"]:
+                raise ValueError("所选配置的裙骨与 VRM 不一致")
+            cloth.update(j["node"] for j in joints)
+    human = doc["extensions"]["VRMC_vrm"]["humanoid"]["humanBones"]
+    legs = {human[side + joint]["node"] for side in ("left", "right") for joint in ("UpperLeg", "LowerLeg")}
+    surfaces = defaultdict(list)
+    for node in nodes:
+        if "skin" not in node:
+            continue
+        skin = doc["skins"][node["skin"]]
+        bones = np.array(skin["joints"])
+        matrices = np.array([world(b) for b in bones]) @ values(skin["inverseBindMatrices"]).reshape(-1, 4, 4).transpose(0, 2, 1)
+        for primitive in doc["meshes"][node["mesh"]]["primitives"]:
+            attrs = primitive["attributes"]
+            sets = sorted(key[7:] for key in attrs if key.startswith("JOINTS_"))
+            joints = np.concatenate([values(attrs["JOINTS_" + i]) for i in sets], axis=1)
+            weights = np.concatenate([values(attrs["WEIGHTS_" + i]) for i in sets], axis=1)
+            weights /= weights.sum(axis=1, keepdims=True)
+            cloth_weight = (np.isin(bones[joints], list(cloth)) * weights).sum(axis=1)
+            leg_weight = (np.isin(bones[joints], list(legs)) * weights).sum(axis=1)
+            kinds = np.where(cloth_weight > .25, 1, np.where(leg_weight > .25, 2, 0))
+            if not kinds.any():
+                continue
+            vertices = np.column_stack((values(attrs["POSITION"]), np.ones(len(kinds))))
+            xyz = np.einsum("nk,nkij,nj->ni", weights, matrices[joints], vertices)[:, :3]
+            indices = values(primitive["indices"]).reshape(-1, 3)
+            material = doc["materials"][primitive["material"]]["name"]
+            for kind in (1, 2):
+                faces = indices[np.all(kinds[indices] == kind, axis=1)]
+                if len(faces):
+                    surfaces[kind, material].append(xyz[faces])
+    return report_meshes({k: np.concatenate(v) for k, v in surfaces.items()}, model)
+
+
+def report_meshes(meshes, path):
     if {kind for kind, _ in meshes} != {1, 2}:
         raise ValueError(f"{path} 缺少已蒙皮的裙面或腿面")
     result = Counter()
@@ -78,9 +146,16 @@ def report(path):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("directory", type=Path)
+    parser.add_argument("directory", type=Path, nargs="?")
+    parser.add_argument("--reference", nargs=2, type=Path, metavar=("MODEL", "PROFILE"), help="单独检查原 VRM 零表情、无物理、无动作的绑定姿势")
     parser.add_argument("--verify-pair", nargs=2, metavar=("BASE", "TUNED"), help="核对两组姿态相同、基线能复现且修复组零相交")
     args = parser.parse_args()
+    if args.reference:
+        print(json.dumps(reference_pose(*args.reference), indent=2, ensure_ascii=False))
+        if not args.directory:
+            parser.exit()
+    if not args.directory:
+        parser.error("需要蒙皮记录目录或 --reference")
     rows = {p.stem: report(p) for p in sorted(args.directory.glob("mesh-*.bin"))}
     if not rows:
         parser.error("没有裙摆三角面记录")

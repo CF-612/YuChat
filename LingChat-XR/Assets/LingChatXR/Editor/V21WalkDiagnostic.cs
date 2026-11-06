@@ -39,14 +39,17 @@ namespace LingChatXR.Editor
             }catch(Exception e){File.WriteAllText(Path.Combine(Output,"failure.txt"),e.ToString());Finish(1);}
         }
         // 固定空间根和物理步长，只切换人体姿态的帧间取样方法。
-        static void CompareCadence(FeiyuAvatar avatar,SpringPhysicsConfiguration config,JObject packet)
+        static IEnumerator CompareCadence(FeiyuAvatar avatar,SpringPhysicsConfiguration config,JObject packet)
         {
             var service=UniVRM10.FastSpringBones.FastSpringBoneService.Instance;
             var originalMode=service.UpdateType;
+            var freeze=avatar.FreezePresentation;avatar.FreezePresentation=true;
             var player=avatar.Motions;
             var rig=avatar.Instance.Runtime.ControlRig;
             var hip=rig.GetBoneTransform(HumanBodyBones.Hips);
             var results=new JArray();
+            float maxWritebackError=0; string worstJoint="";
+            var solvedBones=avatar.Instance.SpringBone.Springs.SelectMany(s=>s.Joints.SkipLast(1)).Select(j=>j.transform).ToHashSet();
             var joints=config.bindings.Where(b=>b.material=="hair" || b.material=="cloth")
                 .SelectMany(b=>avatar.Instance.SpringBone.Springs[b.spring].Joints.SkipLast(1)
                     .Select(j=>(part:b.material,bone:j.transform))).ToArray();
@@ -81,16 +84,59 @@ namespace LingChatXR.Editor
                             if(smooth && step%3==1)Submit(step/3+1,.05f);
                             if(!smooth && step%3==0)Submit(step/3,0);
                             Advance();
+                            if(smooth && step%3==0 && Environment.GetEnvironmentVariable("XR_REPLAY_SURFACES")=="1")
+                            {
+                                string pose=source+"-"+step.ToString("D2");
+                                ExportSkirtSurfaces(avatar,config,"mesh-1-"+pose);
+                                if(step%9==0)
+                                {
+                                    var camera=Object.FindAnyObjectByType<FeiyuPreview>().ViewCamera;
+                                    var center=avatar.Instance.transform.position+Vector3.up*(avatar.HeightMeters*.53f);
+                                    camera.orthographicSize=avatar.HeightMeters*.62f;
+                                    camera.transform.position=center+avatar.transform.TransformDirection(new Vector3(.48f,.1f,.68f));
+                                    camera.transform.LookAt(center);
+                                    yield return null;
+                                    LocomotionProbe.Capture(camera,pose);
+                                    if(Environment.GetEnvironmentVariable("XR_REFERENCE_VIEWS")=="1")
+                                    {
+                                        foreach(var view in new[]{("side",Vector3.right),("back",Vector3.back)})
+                                        {
+                                            camera.transform.position=center+avatar.transform.TransformDirection(view.Item2)*.8f;
+                                            camera.transform.LookAt(center);
+                                            LocomotionProbe.Capture(camera,pose+"-"+view.Item1);
+                                        }
+                                        // 只复原发束，保持同一人体姿势，逐帧核对造型与作者绑定的差异。
+                                        var hair=joints.Where(j=>j.part=="hair").Select(j=>j.bone).ToArray();
+                                        var saved=hair.Select(h=>h.localRotation).ToArray();
+                                        try
+                                        {
+                                            foreach(var h in hair)h.localRotation=avatar.Instance.Runtime.InitPose[h].LocalRotation;
+                                            yield return null;
+                                            LocomotionProbe.Capture(camera,pose+"-back-rest-hair");
+                                        }
+                                        finally{for(int i=0;i<hair.Length;i++)hair[i].localRotation=saved[i];}
+                                    }
+                                }
+                            }
+                            var solved=service.BufferCombiner.Combined;
+                            for(int k=0;k<solved.TransformAccessArray.length;k++)
+                            {
+                                var bone=solved.TransformAccessArray[k];
+                                if(!solvedBones.Contains(bone))continue;
+                                float error=Quaternion.Angle(bone.localRotation,solved.Transforms[k].localRotation);
+                                if(error>maxWritebackError){maxWritebackError=error;worstJoint=bone.name;}
+                            }
                             results.Add(new JObject{["source"]=source,["smooth"]=smooth,["step"]=step,
                                 ["rot"]=new JArray(joints.Select(j=>new JArray(j.bone.localRotation.x,j.bone.localRotation.y,j.bone.localRotation.z,j.bone.localRotation.w)))});
                         }
                         player.EndLocomotion(true);
                     }
                 }
+                if(maxWritebackError>.1f)throw new Exception($"求解后局部姿势被覆盖：{worstJoint} {maxWritebackError:F2}°");
                 File.WriteAllText(Path.Combine(Output,"cadence.json"),new JObject{
-                    ["parts"]=new JArray(joints.Select(j=>j.part)),["frames"]=results}.ToString());
+                    ["maxWritebackError"]=maxWritebackError,["worstJoint"]=worstJoint,["parts"]=new JArray(joints.Select(j=>j.part)),["frames"]=results}.ToString());
             }
-            finally{player.EndLocomotion(true);service.UpdateType=originalMode;avatar.Physics.RequestReset();}
+            finally{avatar.FreezePresentation=freeze;player.EndLocomotion(true);service.UpdateType=originalMode;avatar.Physics.RequestReset();}
         }
         static void Finish(int code){SceneManager.sceneLoaded-=Select;EditorApplication.update-=Tick;EditorApplication.Exit(code);}
         static IEnumerator Check()
@@ -110,6 +156,17 @@ namespace LingChatXR.Editor
                     ["rotations"]=new JArray(joints.Select(j=>new JArray(j.localRotation.x,j.localRotation.y,j.localRotation.z,j.localRotation.w)))});
             }
             for(int i=0;i<70;i++){Sample("place");if(i==1||i==20||i==69)LocomotionProbe.Capture(cam,"place-"+i);yield return null;}
+            if(Environment.GetEnvironmentVariable("XR_FOCUS_REGRESSION")=="1")
+            {
+                live.SendMessage("OnApplicationFocus",false);
+                for(int i=0;i<70;i++){Sample("focusLost");yield return null;}
+                LocomotionProbe.Capture(cam,"focus-lost");
+                live.SendMessage("OnApplicationFocus",true);
+                for(int i=0;i<70;i++){Sample("focusReturned");yield return null;}
+                LocomotionProbe.Capture(cam,"focus-returned");
+                File.WriteAllText(Path.Combine(Output,"focus.json"),new JObject{
+                    ["bones"]=new JArray(joints.Select(j=>j.name)),["frames"]=rows}.ToString());
+            }
             player.EndWelcome();
             var cadencePath=Environment.GetEnvironmentVariable("XR_PHYSICS_CADENCE");
             if(!string.IsNullOrEmpty(cadencePath))
@@ -117,7 +174,14 @@ namespace LingChatXR.Editor
                 var preparation=player.PrepareLocomotion();
                 while(!preparation.IsCompleted)yield return null;
                 if(!preparation.Result)throw new Exception(player.LocomotionStatus);
-                CompareCadence(avatar,config,JObject.Parse(File.ReadAllText(cadencePath)));
+                var path=Environment.GetEnvironmentVariable("XR_COMPARISON_PROFILE");
+                if(!string.IsNullOrEmpty(path))
+                {
+                    avatar.Physics.ConfigureMaterials(JsonUtility.FromJson<SpringPhysicsConfiguration>(File.ReadAllText(path)));
+                    for(int j=0;j<30;j++)yield return null;
+                }
+                var run=CompareCadence(avatar,config,JObject.Parse(File.ReadAllText(cadencePath)));
+                while(run.MoveNext())yield return run.Current;
                 yield break;
             }
             var start=FeiyuPreview.ToUnity(live.Interaction.Position);
@@ -321,11 +385,11 @@ namespace LingChatXR.Editor
             void WriteVertex(Vector3 v){writer.Write(v.x);writer.Write(v.y);writer.Write(v.z);}
             foreach(var r in rig.GetComponentsInChildren<SkinnedMeshRenderer>())
             {
-                var mesh=r.sharedMesh;if(mesh==null || mesh.boneWeights.Length==0)continue;
+                var mesh=r.sharedMesh;if(!r.enabled || mesh==null || mesh.boneWeights.Length==0)continue;
                 var bones=r.bones;var weights=mesh.boneWeights;
                 var baked=new Mesh();
                 try{
-                    r.BakeMesh(baked);var v=baked.vertices;
+                    r.BakeMesh(baked,true);var v=baked.vertices;
                     for(int i=0;i<v.Length;i++)v[i]=r.transform.TransformPoint(v[i]);
                     var kind=new byte[v.Length];
                     for(int i=0;i<kind.Length;i++){
