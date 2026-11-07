@@ -53,7 +53,7 @@ namespace LingChatXR.Chat
         long audioKey=-1;int dailyCue;bool semanticBlocked;
         float speechTime;bool talking,waiting;XrVoiceRhythm rhythm;
         public bool HeadOccupied=>GrabbedActive||headId!=null||(Occupied&MotionRegion.Head)!=0;
-        public MotionRegion Occupied=>LocomotionActive?MotionRegion.All:action==null?MotionRegion.None:Regions(activeAsset);
+        public MotionRegion Occupied=>LocomotionActive?MotionRegion.All:action==null?MotionRegion.None:bodyOwner==ToyCarryOwner && CarryLift>=1?CarryArms:Regions(activeAsset);
         public string PoseId=>activeAsset?.poseLoop!=null&&!releasing&&poseExitAge<0?activeAsset.id:null;
         public int ConversationGestureSerial=>conversation.GestureSerial;
         public string HeadId=>headId;
@@ -176,6 +176,11 @@ namespace LingChatXR.Chat
             try
             {
                 var clip=await Load(asset,folder,package);
+                if(owner==ToyCarryOwner && toyPickup==null && Preferences.Allowed("kay_pickup"))
+                {
+                    var pickup=Catalog.FirstOrDefault(a=>a.id=="kay_pickup");
+                    if(pickup!=null)toyPickup=await Load(pickup);
+                }
                 if(disposed||ticket!=generation||!spatialAllowed||(!PreviewMode&&!AllowedForOwner(id,owner)))return false;
                 if(package!=null&&Mathf.Abs(clip.animation.length-package.lastSampleTimeSec)>.002f)throw new InvalidOperationException("动作包与缓存身体时间轴不一致");
                 if(asset.poseLoop!=null&&!asset.poseLoop.Valid(clip.animation.length))throw new InvalidOperationException("持续姿势区间无效");
@@ -313,12 +318,13 @@ namespace LingChatXR.Chat
             if(releasing)
             {
                 releaseAge+=Mathf.Max(0,dt);float weight=Smooth(releaseAge/Mathf.Max(.001f,cancelDuration));
-                var owned=Regions(activeAsset);
+                var owned=Occupied;
                 for(int i=0;i<bones.Length;i++)bones[i].localRotation=(owned&boneRegions[i])!=0?Quaternion.Slerp(entry[i],frameBase[i],weight):frameBase[i];
                 hips.localPosition=new Vector3(hipsRest.x,Mathf.Lerp(releaseHipsY,hipsRest.y,weight),hipsRest.z);
                 if(weight>=1){action=null;activeAsset=null;releasing=false;Status="已停止 · 回到当前待机";}return;
             }
             if(fresh)fresh=false;else age+=Mathf.Max(0,dt);
+            if(bodyOwner==ToyCarryOwner){StepToyCarry();return;}
             // 与 LingChat 同步：从当前姿态进入，在源收势段内部就回混当前待机。
             float clock=action.generated?age:activeAsset.poseLoop==null&&age>exitAt?action.animation.length-exitDuration+age-exitAt:XrMotionTransition.EntryTime(age,enterDuration);
             float sampleClock=clock;

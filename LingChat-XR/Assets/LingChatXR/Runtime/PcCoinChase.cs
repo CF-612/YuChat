@@ -1,13 +1,15 @@
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using LingChatXR.Core;
 using UnityEngine;
 
 namespace LingChatXR
 {
-    [DefaultExecutionOrder(-60)]
+    [DefaultExecutionOrder(11020)]
     public sealed class PcCoinChase : MonoBehaviour
     {
-        const float Radius=.023f, PalmRadius=.058f;
+        public const float Radius=.031f;
+        const float PalmRadius=.058f;
         FeiyuPreview scene;
         FeiyuAvatar actor;
         PetInteraction table;
@@ -19,6 +21,16 @@ namespace LingChatXR
         Vector3 lastSeen,dragStart,carryOffset;
         bool open,dragging,carrying,seen,searching,controlling,outside;
         float invisibleAge,visibleAge,searchAge,nextPlan;
+        readonly List<Transform> gripPoints=new();
+        MeshCollider coinHull;
+        Transform leftHand,rightHand;
+        public float ContactGap {get;private set;}
+        Task<bool> carryRequest;
+        float settledTime,liftAge;
+        bool inArms,carryDeclined;
+        Vector3 gripOffset;
+        Quaternion liftRotation;
+        public bool InArms=>inArms;
         public bool Deployed=>coin!=null && coin.gameObject.activeSelf;
         public Vector3 CoinPosition=>coin.position;
         public Vector3 LastSeen=>lastSeen;
@@ -62,12 +74,20 @@ namespace LingChatXR
             var root=new GameObject("Token 硬币");root.transform.SetParent(transform,false);
             var gold=Paint(new Color(1,.62f,.12f));var stamp=Paint(new Color(.55f,.28f,.04f));
             var disk=Shape(PrimitiveType.Cylinder,root.transform,Vector3.zero,new Vector3(2*Radius,.003f,2*Radius),gold);
-            var hull=disk.AddComponent<MeshCollider>();hull.sharedMesh=disk.GetComponent<MeshFilter>().sharedMesh;hull.convex=true;
+            gold.EnableKeyword("_EMISSION");gold.SetColor("_EmissionColor",new Color(.32f,.14f,.018f));
+            var hull=coinHull=disk.AddComponent<MeshCollider>();hull.sharedMesh=disk.GetComponent<MeshFilter>().sharedMesh;hull.convex=true;
             friction=new PhysicsMaterial("硬币摩擦"){dynamicFriction=.38f,staticFriction=.48f,bounciness=.06f};
             hull.sharedMaterial=friction;
+            var rim=Paint(new Color(.98f,.78f,.37f));
+            var face=Paint(new Color(.96f,.61f,.17f));
+            foreach(var material in new[]{rim,face}){
+                material.EnableKeyword("_EMISSION");material.SetColor("_EmissionColor",material.color*.65f);
+            }
             foreach(float sign in new[]{-1f,1f}){
-                Shape(PrimitiveType.Cube,root.transform,new Vector3(0,sign*.0032f,0),new Vector3(.004f,.0005f,.022f),stamp);
-                Shape(PrimitiveType.Cube,root.transform,new Vector3(0,sign*.0032f,.01f),new Vector3(.017f,.0005f,.004f),stamp);
+                Shape(PrimitiveType.Cylinder,root.transform,Vector3.up*(sign*.0032f),new Vector3(Radius*1.84f,.0003f,Radius*1.84f),rim);
+                Shape(PrimitiveType.Cylinder,root.transform,Vector3.up*(sign*.00355f),new Vector3(Radius*1.68f,.00025f,Radius*1.68f),face);
+                Shape(PrimitiveType.Cube,root.transform,new Vector3(0,sign*.004f,0),new Vector3(.004f,.0005f,.022f),stamp);
+                Shape(PrimitiveType.Cube,root.transform,new Vector3(0,sign*.004f,.01f),new Vector3(.017f,.0005f,.004f),stamp);
             }
             coin=root.AddComponent<Rigidbody>();coin.mass=.025f;coin.angularDamping=.85f;coin.linearDamping=.95f;
             coin.maxAngularVelocity=65;coin.interpolation=RigidbodyInterpolation.Interpolate;
@@ -88,6 +108,12 @@ namespace LingChatXR
             if(ardy!=null && ardy.Active)ardy.End("切换至玩具箱");
 #endif
             Store();actor=scene.Avatar;table=scene.Interaction;
+            actor.Instance.TryGetBoneTransform(HumanBodyBones.LeftHand,out leftHand);
+            actor.Instance.TryGetBoneTransform(HumanBodyBones.RightHand,out rightHand);
+            _=actor.Motions.WarmToyCarry();
+            gripPoints.Clear();
+            foreach(var bone in new[]{HumanBodyBones.LeftHand,HumanBodyBones.RightHand,HumanBodyBones.LeftMiddleDistal,HumanBodyBones.RightMiddleDistal,HumanBodyBones.LeftIndexDistal,HumanBodyBones.RightIndexDistal})
+                if(actor.Instance.TryGetBoneTransform(bone,out var point) && point)gripPoints.Add(point);
             if(!coin)Build();
             coin.gameObject.SetActive(true);
             var pos=Feet+scene.SpatialRotation*Vector3.forward*.16f;
@@ -97,7 +123,7 @@ namespace LingChatXR
         public void Roll(Vector3 start,Vector3 delta)
         {
             if(!Deployed || !Inside(start,Radius))return;
-            Hand(false,default);outside=false;
+            ReleaseFromArms();Hand(false,default);outside=false;
             Vector3 velocity=Vector3.ClampMagnitude(Vector3.ProjectOnPlane(delta,Vector3.up)*2.4f,.85f);
             var axis=velocity.sqrMagnitude>.00001f?Vector3.Cross(Vector3.up,velocity.normalized):Vector3.right;
             coin.position=new Vector3(start.x,table.PlaneCenter.Y+Radius+.002f,start.z);
@@ -111,7 +137,8 @@ namespace LingChatXR
             palm.gameObject.SetActive(down);
             if(!down){if(carrying){coin.isKinematic=false;coin.WakeUp();}carrying=false;return;}
             at.y=table.PlaneCenter.Y+.043f;palm.position=at;
-            if(!carrying && Flat(coin.position-at).magnitude<PalmRadius*.59f && Mathf.Abs(coin.position.y-at.y)<.06f){
+            if(!carrying && Flat(coin.position-at).magnitude<PalmRadius*.59f && (inArms || Mathf.Abs(coin.position.y-at.y)<.06f)){
+                ReleaseFromArms();
                 carrying=true;coin.isKinematic=true;coin.rotation=Quaternion.identity;carryOffset=Flat(coin.position-at);
             }
             if(carrying)coin.position=at+carryOffset-Vector3.up*.038f;
@@ -128,9 +155,12 @@ namespace LingChatXR
                 dragging=false;Hand(false,default);return false;
             }
             Vector3 at=ray.GetPoint(hit);
+            bool hitHeldCoin=inArms && (press || useHand) && coinHull.Raycast(ray,out _,4f);
+            if(hitHeldCoin)at=Clamp(coin.position,Radius);
             Hand(useHand,at);
             if(useHand){dragging=false;return true;}
             bool onCoin=Flat(at-coin.position).magnitude<Radius*1.3f;
+            onCoin |= hitHeldCoin;
             if(press&&Inside(at,Radius) && (onCoin || Flat(at-Feet).magnitude>table.RadiusMeters)){
                 dragging=true;dragStart=at;
             }
@@ -203,9 +233,39 @@ namespace LingChatXR
         }
         void StopTracking()
         {
+            ReleaseFromArms();
             if(controlling && scene && scene.Locomotion)scene.Locomotion.CancelToy(true);
             if(actor){actor.ToyAttention=null;actor.SearchingForToy=false;}
             controlling=seen=searching=false;lastSeen=default;invisibleAge=visibleAge=searchAge=nextPlan=0;
+        }
+        void ReleaseFromArms()
+        {
+            if((carryRequest!=null || inArms) && actor)actor.Motions.EndToyCarry();
+            if(inArms && coin)coin.isKinematic=false;
+            inArms=false;carryRequest=null;settledTime=0;carryDeclined=false;
+        }
+        void AttemptCarry(float dt)
+        {
+            if(!leftHand || !rightHand || dragging || carrying || actor.Motions.Busy || carryDeclined)return;
+            if(coin.linearVelocity.magnitude>.045f){settledTime=0;return;}
+            settledTime+=dt;
+            if(settledTime>=.55f)carryRequest=actor.Motions.BeginToyCarry(coin.position,Radius);
+        }
+        Vector3 CarryAnchor()
+        {
+            var hands=(leftHand.position+rightHand.position)*.5f;
+            return hands+scene.SpatialRotation*Vector3.forward*(Radius*.32f)+Vector3.up*(Radius*.34f);
+        }
+        void LateUpdate()
+        {
+            if(!inArms || !actor)return;
+            liftAge+=Time.deltaTime;
+            var facing=scene.SpatialRotation;
+            var anchor=CarryAnchor();
+            float t=Mathf.SmoothStep(0,1,Mathf.Clamp01(liftAge/.52f));
+            coin.position=anchor+gripOffset*(1-t);
+            coin.rotation=Quaternion.Slerp(liftRotation,facing*Quaternion.Euler(74,0,0)*Quaternion.Euler(0,180,0),t);
+            actor.ToyAttention=lastSeen=coin.position;
         }
         void Update()
         {
@@ -213,6 +273,32 @@ namespace LingChatXR
             if(!scene.Ready || actor!=scene.Avatar || table!=scene.Interaction || !table.PlaneConfirmed){Store();return;}
             if(table.State!=PetState.Idle || scene.SizeEditing){StopTracking();return;}
             bool visible=Visible();
+            if(inArms){
+                if(actor.Motions.HoldingToyPose)return;
+                ReleaseFromArms();
+            }
+            if(carryRequest!=null){
+                bool reachable=visible && !dragging && !carrying && Flat(coin.position-Feet).magnitude<=table.RadiusMeters+Radius+.018f;
+                if(!reachable)ReleaseFromArms();
+                else if(carryRequest.IsCompleted){
+                    if(carryRequest.IsCompletedSuccessfully && carryRequest.Result && actor.Motions.HoldingToyPose){
+                        Status="俯身捡硬币";
+                        if(!actor.Motions.ReachingToy)return;
+                        ContactGap=float.PositiveInfinity;
+                        foreach(var point in gripPoints)
+                            ContactGap=Mathf.Min(ContactGap,Vector3.Distance(point.position,coinHull.ClosestPoint(point.position)));
+                        if(ContactGap>actor.HeightMeters*.055f){
+                            if(actor.Motions.CarryReachExpired){ReleaseFromArms();carryDeclined=true;Status="硬币够不到";}
+                            return;
+                        }
+                        actor.Motions.AcceptToyContact();
+                        gripOffset=coin.position-CarryAnchor();liftRotation=coin.rotation;liftAge=0;
+                        coin.isKinematic=true;inArms=true;Status="抱住硬币了";
+                    }else carryDeclined=true;
+                    carryRequest=null;
+                }
+                if(inArms || carryRequest!=null)return;
+            }
             visibleAge=visible?visibleAge+Time.deltaTime:0;
             visible &= !searching || visibleAge>=.10f;
             if(visible){
@@ -238,8 +324,11 @@ namespace LingChatXR
             var travel=scene.Locomotion;
             if(delta.magnitude<=reach+.012f || Flat(goal-Feet).magnitude<.008f){
                 if(controlling && travel.Active)travel.CancelToy();
-                controlling=false;Status=searching?"在刚才的位置寻找":"够到硬币了";return;
+                controlling=false;
+                if(visible && !dragging && !carrying)AttemptCarry(.1f);else settledTime=0;
+                Status=searching?"在刚才的位置寻找":"够到硬币了";return;
             }
+            settledTime=0;
             if(palm.gameObject.activeSelf && !carrying && Crosses(Feet,goal,palm.position,PalmRadius+table.RadiusMeters)){
                 float clearance=PalmRadius+table.RadiusMeters;
                 if(!TryBypass(Feet,goal,palm.position,clearance,out var via)){

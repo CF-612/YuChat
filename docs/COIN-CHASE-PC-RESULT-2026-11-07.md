@@ -44,3 +44,26 @@ ffmpeg -framerate 20 -i evidence/my-coin-chase/frames/%04d.jpg -c:v libx264 -crf
 ```
 
 本机交付目录为 evidence/coin-chase-pc-2026-11-07。YuChat-Coin-Chase-PC.mp4 为正常速度演示，toybox.png 为实际 Game 操作入口，trace.csv 为逐帧状态，result.txt 为场景断言结果。
+
+## 抱币更新 · 2026-11-07
+
+入口沿用 **YuChat → 玩具箱 → PC 硬币追逐**。取出后沿桌面左键拖放。小鱼追近，等币慢下来、站稳，再蹲下伸手、捡起并抱在胸前。再投一次会释放抱姿。H 模拟手可从她怀里取走硬币；右键提起小鱼时，角色抓取优先，硬币恢复刚体物理。
+
+取币时开始缓存已有动作，走近后才申请角色控制权。硬币直径由 4.6 cm 调到 6.2 cm，增加金色内圈和双面压印。小鱼复用角色动作目录中的 kay_pickup（弯腰拾起物品，SHA256 前八位 68E55F2D）和 ual2_walk_carry_loop（双手搬着重物走路，92357781）。捡取阶段根据实际币位置调整伸手方向，按模型脚踝校正蹲下过程中的高度。接触检查取标准人形手腕和可用指骨到硬币凸碰撞体的最近距离，容差为角色身高的 5.5%。抱稳后持续采样搬运素材的双臂，双脚回到当前待机；币随双手中点移动，初次接触的偏移逐渐收拢。动作加载、取消、权限和抓取接管沿用既有动作播放器。
+
+| PC 验收 | 结果 |
+|---|---|
+| 自主追近、俯身、接触后抬币、持续抱稳 | V21 实际 Play 回放，接管时最近手部采样点距币面 1.1 mm，币心最高距桌面 10.68 cm；近景连续记录 60 帧抱持及脚踝高度 |
+| 提起小鱼、关闭搬运动作许可、伸手时收回 | 分别检查当帧撤销、禁止抱币、旧请求无法重新取得硬币 |
+| 追逐、挡路、绕行、盖币暗移与揭晓、持续盖住到收回、出界、重置、换模型 | 复用原 50 秒试玩回归，并按放大后的实际半径检查投放点 |
+| 观感与适配范围 | 本批视觉对照使用 V21；其他身材的手指贴合度与玩家手感待体验 |
+
+在仓库根目录使用上一节的全流程命令。单独复现拾取与抱稳可执行：
+
+```powershell
+$env:XR_COIN_HUG='1'
+./tools/run-m1-check.ps1 -EvidenceDirectory evidence/my-coin-hug -Method LingChatXR.Editor.CoinChaseProbe.Run
+Remove-Item Env:XR_COIN_HUG
+```
+
+本地交付位于 evidence/coin-carry-release。hug 包含抱币近景、正侧截图与 poses.csv；chase 包含 50 秒整段和逐帧 trace.csv。

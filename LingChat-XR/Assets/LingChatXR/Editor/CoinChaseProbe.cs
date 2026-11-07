@@ -76,6 +76,77 @@ namespace LingChatXR.Editor
             const int fps=20;Time.captureFramerate=fps;
             var target=new RenderTexture(832,624,24);target.Create();
             var texture=new Texture2D(832,624,TextureFormat.RGB24,false);
+            if(Environment.GetEnvironmentVariable("XR_COIN_HUG")=="1")
+            {
+                coin.Take();
+                var initial=FeiyuPreview.ToUnity(core.Position);
+                float peakHeight=0;int heldFrames=0;
+                var hugFrames=Path.Combine(Output,"frames");Directory.CreateDirectory(hugFrames);
+                var approachTime=EditorApplication.timeSinceStartup;
+                model.Instance.TryGetBoneTransform(HumanBodyBones.LeftHand,out var left);
+                model.Instance.TryGetBoneTransform(HumanBodyBones.RightHand,out var rightHand);
+                model.Instance.TryGetBoneTransform(HumanBodyBones.LeftFoot,out var footL);
+                model.Instance.TryGetBoneTransform(HumanBodyBones.RightFoot,out var footR);
+                model.Instance.TryGetBoneTransform(HumanBodyBones.Hips,out var pelvis);
+                var poses=new List<string>{"frame,action,inArms,leftDist,rightDist,height,leftFoot,rightFoot,hip"};
+                for(int frame=0;heldFrames<fps*3 && EditorApplication.timeSinceStartup-approachTime<55;frame++)
+                {
+                    yield return null;
+                    if(coin.InArms){
+                        heldFrames++;peakHeight=Mathf.Max(peakHeight,coin.CoinPosition.y-core.PlaneCenter.Y);
+                        if(!model.Motions.HoldingToyPose)throw new Exception("抱币动作失去所有权");
+                    }
+                    poses.Add(FormattableString.Invariant($"{frame},{model.Motions.ActiveId},{coin.InArms},{Vector3.Distance(left.position,coin.CoinPosition):F4},{Vector3.Distance(rightHand.position,coin.CoinPosition):F4},{coin.CoinPosition.y-core.PlaneCenter.Y:F4},{footL.position.y-core.PlaneCenter.Y:F4},{footR.position.y-core.PlaneCenter.Y:F4},{pelvis.position.y-core.PlaneCenter.Y:F4}"));
+                    var subject=FeiyuPreview.ToUnity(core.Position)+Vector3.up*model.HeightMeters*.47f;
+                    camera.orthographicSize=model.HeightMeters*.83f;
+                    camera.transform.position=subject+forward*.55f+right*.21f+Vector3.up*.15f;camera.transform.LookAt(subject);
+                    if(heldFrames==fps || heldFrames==fps*2){
+                        var savedPosition=camera.transform.position;var savedRotation=camera.transform.rotation;
+                        var savedSize=camera.orthographicSize;
+                        var focus=FeiyuPreview.ToUnity(core.Position)+Vector3.up*model.HeightMeters*.48f;
+                        camera.orthographicSize=model.HeightMeters*.69f;
+                        camera.transform.position=focus+live.SpatialRotation*new Vector3(heldFrames==fps?.12f:.65f,.09f,.53f);
+                        camera.transform.LookAt(focus);
+                        LocomotionProbe.Capture(camera,heldFrames==fps?"hug-front":"hug-side");
+                        camera.orthographicSize=savedSize;camera.transform.SetPositionAndRotation(savedPosition,savedRotation);
+                    }
+                    var priorTarget=camera.targetTexture;var priorActive=RenderTexture.active;
+                    camera.targetTexture=target;camera.Render();RenderTexture.active=target;
+                    texture.ReadPixels(new Rect(0,0,832,624),0,0);texture.Apply();camera.targetTexture=priorTarget;RenderTexture.active=priorActive;
+                    File.WriteAllBytes(Path.Combine(hugFrames,$"{frame:D4}.jpg"),texture.EncodeToJPG(85));
+                }
+                File.WriteAllLines(Path.Combine(Output,"poses.csv"),poses);
+                string summaryHug=$"holdFrames={heldFrames} contactGap={coin.ContactGap:F4} peakHeight={peakHeight:F4} travel={Vector3.Distance(initial,FeiyuPreview.ToUnity(core.Position)):F4} status={coin.Status} motion={model.Motions.Status}";
+                File.WriteAllText(Path.Combine(Output,"hug.txt"),summaryHug);
+                if(heldFrames<fps*2 || peakHeight<.035f)throw new Exception(summaryHug);
+                var grip=model.GrabProxy.bounds.center;
+                var grabRay=new Ray(camera.transform.position,grip-camera.transform.position);
+                live.HandlePointer(grabRay,false,false,false,true,false,0);
+                if(core.State!=PetState.Held || coin.InArms || model.Motions.HoldingToyPose)throw new Exception("提起未打断抱币");
+                live.HandlePointer(grabRay,false,false,false,false,true,0);
+                coin.Store();
+                while(core.State!=PetState.Idle)yield return null;
+                var prefs=model.Motions.Preferences;
+                var disabled=Newtonsoft.Json.Linq.JObject.FromObject(prefs).ToObject<XrMotionPreferences>();
+                disabled.items["ual2_walk_carry_loop"]=false;
+                model.Motions.ApplyPreferences(disabled);
+                coin.Take();
+                for(int i=0;i<fps*5;i++){
+                    yield return null;
+                    if(coin.InArms || model.Motions.HoldingToyPose)throw new Exception("关闭搬运动作后仍取得硬币");
+                }
+                coin.Store();model.Motions.ApplyPreferences(prefs);
+                coin.Take();
+                double timeout=EditorApplication.timeSinceStartup+25;
+                while(!model.Motions.HoldingToyPose && EditorApplication.timeSinceStartup<timeout)yield return null;
+                if(!model.Motions.HoldingToyPose || coin.InArms)throw new Exception("未进入接触前伸手阶段");
+                coin.Store();
+                for(int i=0;i<fps;i++)yield return null;
+                if(coin.Deployed || coin.InArms || model.Motions.HoldingToyPose)throw new Exception("提前收回后旧抱币动作未撤销");
+                File.AppendAllText(Path.Combine(Output,"hug.txt")," grabInterrupt=True deniedMotion=True storeDuringReach=True");
+                Time.captureFramerate=0;
+                target.Release();Object.DestroyImmediate(target);Object.DestroyImmediate(texture);yield break;
+            }
             var frames=Path.Combine(Output,"frames");Directory.CreateDirectory(frames);
             var rows=new List<string>{"frame,state,status,searches,actorX,actorZ,coinX,coinZ,seenX,seenZ,move"};
             Vector3 throwStart=default,covered=default,hidden=default,memory=default,road=default;
@@ -124,7 +195,7 @@ namespace LingChatXR.Editor
                 if(i==800){
                     coin.Take();var direction=live.SpatialRotation*Vector3.forward;
                     var edgePoint=feet;
-                    while(core.ContainsFootprint(FeiyuPreview.ToCore(edgePoint+direction*.01f),.028f))edgePoint+=direction*.01f;
+                    while(core.ContainsFootprint(FeiyuPreview.ToCore(edgePoint+direction*.01f),PcCoinChase.Radius+.005f))edgePoint+=direction*.01f;
                     coin.Roll(edgePoint,direction*.34f);
                 }
                 if(i==900)coin.Take();
