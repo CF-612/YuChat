@@ -77,7 +77,7 @@ namespace LingChatXR
         public void PreserveManualFacing(){manualFacing=true;attentionAge=0;if(preview.ViewCamera!=null)manualViewer=preview.ViewCamera.transform.position;}
         void StepAttention(float dt)
         {
-            if(Active||applicationPaused||focusLost||!IdleFacingAllowed||preview.InspectingFromDesktop||!preview.Ready||preview.SizeEditing||!preview.Avatar.GazeEnabled||preview.Avatar.FollowingHand||preview.Interaction.State!=PetState.Idle||!preview.Interaction.PlaneConfirmed||preview.Avatar.Motions.Busy){attentionAge=0;return;}
+            if(Active||applicationPaused||focusLost||!IdleFacingAllowed||preview.InspectingFromDesktop||!preview.Ready||preview.SizeEditing||!preview.Avatar.GazeEnabled||preview.Avatar.FollowingHand||preview.Avatar.ToyAttention.HasValue||preview.Interaction.State!=PetState.Idle||!preview.Interaction.PlaneConfirmed||preview.Avatar.Motions.Busy){attentionAge=0;return;}
             if(manualFacing)
             {
                 if(Vector3.ProjectOnPlane(preview.ViewCamera.transform.position-manualViewer,Vector3.up).magnitude<.35f)return;
@@ -89,7 +89,10 @@ namespace LingChatXR
             if(attentionAge>=.65f){attentionAge=0;_=FaceViewer();}
         }
         internal Task<bool> FacePoint(Vector3 point)=>Begin(FeiyuPreview.ToUnity(preview.Interaction.Position),true,point);
-        async Task<bool> Begin(Vector3 destination,bool faceOnly,Vector3? facePoint=null)
+        bool followingToy;
+        internal void CancelToy(bool immediate=false){if(followingToy)Cancel(immediate);}
+        internal Task<bool> FollowToy(Vector3 destination)=>Begin(destination,false,null,true);
+        async Task<bool> Begin(Vector3 destination,bool faceOnly,Vector3? facePoint=null,bool toy=false)
         {
             if(preview==null||!preview.Ready||preview.SizeEditing||preview.Interaction.State!=PetState.Idle||!preview.Interaction.PlaneConfirmed||!Finite(destination))return false;
             var selectedCore=preview.Interaction;var avatar=preview.Avatar;
@@ -101,15 +104,17 @@ namespace LingChatXR
             if(!faceOnly&&Active&&State!=Phase.Preparing&&core==selectedCore&&bound==avatar&&generation==core.Generation&&bound.Motions.LocomotionOwned)
             {
                 if(State==Phase.Blocked)return false;
-                RegisterCommand();target=destination;
+                followingToy=toy;
+                if(!toy)RegisterCommand();
+                target=destination;
                 var nextHeading=Quaternion.LookRotation((destination-FeiyuPreview.ToUnity(core.Position)).normalized,Vector3.up);
                 float difference=Quaternion.Angle(preview.SpatialRotation,nextHeading);
                 if(State==Phase.Facing||State==Phase.Turning||difference>75)
-                {if(Quaternion.Angle(heading,nextHeading)>2||State==Phase.Facing){ConfigureTurn(nextHeading);State=Phase.Turning;speed=0;}}
+                {if(Quaternion.Angle(heading,nextHeading)>(toy?18:2)||State==Phase.Facing){ConfigureTurn(nextHeading);State=Phase.Turning;speed=0;}}
                 else heading=nextHeading;
                 return true;
             }
-            Cancel(true);int ticket=++request;int expected=selectedCore.Generation;State=Phase.Preparing;Status="准备行走动作…";
+            Cancel(true);followingToy=toy;int ticket=++request;int expected=selectedCore.Generation;State=Phase.Preparing;Status="准备行走动作…";
             await avatar.Motions.CatalogReady;bool prepared=await avatar.Motions.PrepareLocomotion();
             if(this==null||ticket!=request)return false;
             if(!prepared||!preview.Ready||preview.Avatar!=avatar||preview.Interaction!=selectedCore||preview.SizeEditing||selectedCore.Generation!=expected||selectedCore.State!=PetState.Idle||!selectedCore.PlaneConfirmed)
@@ -123,7 +128,8 @@ namespace LingChatXR
             if(!float.IsFinite(nominalSpeed)||nominalSpeed<=0||!avatar.Motions.BeginLocomotion()){State=Phase.None;Status="角色正在执行动作，请结束后再选择目标";return false;}
             bound=avatar;core=selectedCore;previousAutonomy=core.AutonomousEnabled;core.SetAutonomousEnabled(true);restoring=true;generation=core.Generation;
             target=destination;speed=walkTime=turnTime=0;manualFacing=false;attentionAge=0;running=false;
-            if(!faceOnly)RegisterCommand();
+            followingToy=toy;
+            if(!faceOnly&&!toy)RegisterCommand();
             var direction=Vector3.ProjectOnPlane((faceOnly?(facePoint??preview.ViewCamera.transform.position):destination)-FeiyuPreview.ToUnity(core.Position),Vector3.up);
             if(direction.sqrMagnitude<.0001f){bound.Motions.EndLocomotion();Finish();return true;}
             ConfigureTurn(Quaternion.LookRotation(direction.normalized,Vector3.up));
@@ -169,6 +175,11 @@ namespace LingChatXR
             }
             Vector3 current=FeiyuPreview.ToUnity(core.Position);float remaining=Vector3.Distance(current,target);
             float pace=SpeedMultiplier;
+            if(followingToy)
+            {
+                float catchUp=Mathf.InverseLerp(bound.HeightMeters*.65f,bound.HeightMeters*1.6f,remaining);
+                pace=Mathf.Min(3f,pace+catchUp*.65f);
+            }
             float fastBoost=Mathf.Max(0,pace-1);
             float acceleration=nominalSpeed*(4+fastBoost*5);
             float desired=Mathf.Min(nominalSpeed*(pace+fastBoost*.65f),Mathf.Sqrt(2*acceleration*remaining));speed=Mathf.MoveTowards(speed,desired,acceleration*dt);
@@ -182,7 +193,7 @@ namespace LingChatXR
             if(remaining-distance<=.0001f)
             {
                 speed=0;var towardViewer=Vector3.ProjectOnPlane(preview.ViewCamera.transform.position-target,Vector3.up);
-                if(towardViewer.sqrMagnitude>.01f&&Vector3.Angle(heading*Vector3.forward,towardViewer)>12)
+                if(!followingToy&&towardViewer.sqrMagnitude>.01f&&Vector3.Angle(heading*Vector3.forward,towardViewer)>12)
                 {ConfigureTurn(Quaternion.LookRotation(towardViewer,Vector3.up));State=Phase.Facing;Status="已到达 · 转身看向你";}
                 else {bound.Motions.EndLocomotion();Finish();Status="已到达 · 点桌面可再选目标";}
             }
@@ -190,7 +201,7 @@ namespace LingChatXR
         static bool Finite(Vector3 p)=>float.IsFinite(p.x)&&float.IsFinite(p.y)&&float.IsFinite(p.z);
         void Finish()
         {
-            State=Phase.None;speed=0;running=false;AnimationPlaybackRate=0;clickBoost=0;lastCommandAt=float.NegativeInfinity;
+            State=Phase.None;followingToy=false;speed=0;running=false;AnimationPlaybackRate=0;clickBoost=0;lastCommandAt=float.NegativeInfinity;
             if(restoring&&core!=null){core.SetAutonomousEnabled(previousAutonomy);restoring=false;}
             core=null;
         }

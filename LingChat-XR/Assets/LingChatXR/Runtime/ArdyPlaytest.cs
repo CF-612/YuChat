@@ -49,6 +49,7 @@ namespace LingChatXR.Editor
         {
             if(preview==null||!preview.Ready||preview.ExternalInput)return;
             if(!preview.Interaction.PlaneConfirmed&&!preview.Place(Vector3.zero))return;
+            if(preview.CoinToy!=null && preview.CoinToy.Deployed)preview.CoinToy.Store();
             var demo=preview.GetComponent<ArdyPlaytest>()??preview.gameObject.AddComponent<ArdyPlaytest>();
             UnityEditor.SessionState.SetBool(PrewarmKey,true);
             demo.Begin(preview);

@@ -158,3 +158,6 @@
 .motion-library-mode .motion-controls .unity-base-field { flex-direction: row; align-items: center; }
 .motion-library-mode .motion-controls .unity-base-field__label { min-width: 135px; margin-bottom: 0; }
 .motion-library-mode .motion-controls .unity-popup-field__input, .motion-library-mode .motion-search .unity-base-text-field__input { flex-grow: 1; }
+
+.toy-panel { position: absolute; top: 78px; right: 24px; padding: 12px 18px; background-color: rgb(23,40,54); border-radius: 12px; border-width: 1px; border-color: rgba(133,194,217,.55); }
+.toy-actions { flex-direction: row; margin-top: 7px; margin-bottom: 7px; }

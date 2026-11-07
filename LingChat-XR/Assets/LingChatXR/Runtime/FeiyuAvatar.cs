@@ -119,6 +119,10 @@ namespace LingChatXR
         {
             attentionLeft=left;attentionRight=right;
         }
+        internal Vector3? ToyAttention {get;set;}
+        internal bool SearchingForToy {get;set;}
+        internal Vector3 SightDirection=>gaze!=null?gaze.position-EyePosition:transform.forward;
+        internal Vector3 EyePosition=>head!=null?head.position:transform.position+Vector3.up*HeightMeters*.8f;
         Vector3 AttentionPoint(Vector3 viewer,bool petting)
         {
             if(petting||!idleAllowed||!GazeEnabled||MotionPreviewMode||Motions.Busy)
@@ -544,16 +548,18 @@ namespace LingChatXR
             ApplyJelly(dt);
             if (head == null) return;
             Vector3 focus = AttentionPoint(viewerPosition,holdFace);
+            bool watchingToy=ToyAttention.HasValue && !holdFace && !FollowingHand && !suspended;
+            if(watchingToy)focus=ToyAttention.Value;
             Vector3 local = transform.InverseTransformDirection(focus - head.position);
             float yaw = Mathf.Clamp(Mathf.Atan2(local.x, local.z) * Mathf.Rad2Deg, -85, 85);
             float pitch = Mathf.Clamp(-Mathf.Atan2(local.y, new Vector2(local.x, local.z).magnitude) * Mathf.Rad2Deg, -30, 30);
             // 行走/转身拥有身体时看向自身前方；结束后沿用用户的视线偏好，不改设置。
-            if (suspended || !GazeEnabled || Motions.LocomotionOwned) { yaw = 0; pitch = 0; }
+            if (suspended || !GazeEnabled || (Motions.LocomotionOwned&&!watchingToy)) { yaw = 0; pitch = 0; }
             bool quiet=idleAllowed&&!MotionPreviewMode&&!Motions.Busy&&!holdFace&&!(speech!=null&&speech.IsPlaying);
             idleAmount=Mathf.Lerp(idleAmount,quiet?1:0,1-Mathf.Exp(-dt/.35f));
             float t=Time.unscaledTime;
             if(quiet&&presentationChest!=null)presentationChest.localRotation*=Quaternion.Euler(Mathf.Sin(t*1.15f)*1.03f*idleAmount,0,Mathf.Sin(t*.17f+.6f)*.63f*idleAmount);
-            if(quiet&&GazeEnabled&&!FollowingHand){var look=IdleLook(t)*idleAmount;yaw+=look.x;pitch+=look.y;}
+            if(quiet&&GazeEnabled&&!FollowingHand&&!watchingToy){var look=IdleLook(t)*idleAmount;yaw+=look.x;pitch+=look.y;}
             if(PreviewEmotion=="害羞"){yaw+=12;pitch+=8;}
             if(holdFace){yaw=0;pitch=23;}
             else if(FollowingHand)
@@ -562,7 +568,7 @@ namespace LingChatXR
             var targetAim=Quaternion.Euler(pitch,yaw,0);
             eyeAim=Time.unscaledTime<smoothEyesUntil?Quaternion.Slerp(eyeAim,targetAim,1-Mathf.Exp(-dt*9)):targetAim;
             gazeOffset=Quaternion.Slerp(gazeOffset,Quaternion.Euler(pitch*.6f,yaw*.75f,0),1-Mathf.Exp(-6f*dt));
-            if(presentationHead!=null&&!Motions.HeadOccupied)presentationHead.localRotation*=gazeOffset;
+            if(presentationHead!=null&&(!Motions.HeadOccupied||watchingToy&&Motions.LocomotionOwned))presentationHead.localRotation*=gazeOffset;
             gaze.position = head.position + transform.TransformDirection(eyeAim * Vector3.forward);
         }
         void UpdateSticker(Vector3 viewer)
@@ -571,7 +577,7 @@ namespace LingChatXR
                 var obj=new GameObject("心情贴纸");obj.transform.SetParent(transform,false);
                 sticker=obj.AddComponent<MoodSticker>();
             }
-            string mood=heldReaction?"惊讶":PreviewEmotion??(chat!=null&&!chat.Thinking?chat.Emotion:"");
+            string mood=heldReaction?"惊讶":SearchingForToy?"疑惑":PreviewEmotion??(chat!=null&&!chat.Thinking?chat.Emotion:"");
             sticker.Present(mood,head!=null?head.position:transform.position,viewer,HeightMeters);
         }
         void ComposeFace(float dt,bool holdFace)

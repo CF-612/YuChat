@@ -124,6 +124,7 @@ namespace LingChatXR
             LingChatXR.Editor.ArdyPlaytest.PrewarmForReturnVisit(this);
 #endif
             Locomotion=gameObject.AddComponent<PetLocomotion>();Locomotion.Configure(this);
+            if(!ExternalInput && Application.platform!=RuntimePlatform.Android){CoinToy=gameObject.AddComponent<PcCoinChase>();CoinToy.Configure(this);}
             lifetime = lifetime ?? new CancellationTokenSource();
             speech = FindAnyObjectByType<Chat.XrChatController>()?.Voice;
             if (speech == null) speech = GetComponent<Speech.XrSpeechController>();
@@ -237,6 +238,7 @@ namespace LingChatXR
         public Task<bool> RetryCharacterLoadAsync()=>SwitchCharacterAsync(requestedCharacterFolder??characterFolder);
         private void ClearCharacter()
         {
+            CoinToy?.Store();
             SizeEditing=false;++SizeEditGeneration;
             Interaction?.Suspend();Interaction=null;
             dropAvailable=false;DropPreviewValid=false;orbiting=false;grabGeneration=0;grabOffset=Vector3.zero;lift=0;
@@ -282,6 +284,7 @@ namespace LingChatXR
         public void ResetPlacement()
         {
             if(!Ready)return;
+            CoinToy?.Store();
             CancelSizeEdit();
             Interaction.Reset();avatarRoot.SetActive(false);ApplyState();avatar.ResetSecondaryMotion();message="请重新确认桌面并放置。";
             if(ExternalInput&&boundary!=null)boundary.enabled=false;
@@ -372,6 +375,7 @@ namespace LingChatXR
             bool chatUi = Chat.XrChatView.BlocksSceneInput(Input.mousePosition);
             Vector2 guiPointer = new Vector2(Input.mousePosition.x, Screen.height - Input.mousePosition.y);
             bool overUi = chatUi || (!Chat.XrChatView.SettingsAvailable && (toolsButton.Contains(guiPointer) || (showTools && panel.Contains(guiPointer))));
+            overUi |= CoinToy!=null && CoinToy.OverPanel(guiPointer);
             if (Input.GetMouseButtonDown(2)) orbiting = !overUi;
             if (!Input.GetMouseButton(2)) orbiting = false;
             Vector2 drag = orbiting && !overUi ? (Vector2)(Input.mousePosition - previousMousePosition) : Vector2.zero;
@@ -379,7 +383,8 @@ namespace LingChatXR
             previousMousePosition = Input.mousePosition;
             HandleViewInput(drag, overUi ? 0 : Input.mouseScrollDelta.y, !Chat.XrChatView.HasTextFocus && Input.GetKeyDown(KeyCode.F));
             Ray ray = previewCamera.ScreenPointToRay(Input.mousePosition);
-            HandlePointer(ray, overUi, Input.GetMouseButtonDown(0), Input.GetMouseButton(0),
+            bool toyInput=CoinToy!=null && CoinToy.Pointer(ray,overUi);
+            HandlePointer(ray, overUi || toyInput, Input.GetMouseButtonDown(0), Input.GetMouseButton(0),
                 Input.GetMouseButtonDown(1), Input.GetMouseButtonUp(1), Input.mouseScrollDelta.y);
             if (!Chat.XrChatView.HasTextFocus && Input.GetKeyDown(KeyCode.Escape)){if(SizeEditing)CancelSizeEdit();else if(Locomotion.Active)Locomotion.Cancel();else SimulateTrackingLoss();}
         }
@@ -487,6 +492,7 @@ namespace LingChatXR
 
         private void ApplyState()
         {
+            if(Interaction.State!=PetState.Idle)CoinToy?.Interrupt();
 #if UNITY_EDITOR
             if(avatar.Motions?.HasPcStream==true && Interaction.State!=PetState.Idle)
                 avatar.Motions.SetSpatialAllowed(false);
@@ -569,6 +575,7 @@ namespace LingChatXR
             dropMarker.enabled = false;
         }
 
+        internal PcCoinChase CoinToy {get;private set;}
         private void OnGUI()
         {
             if(ExternalInput)return;

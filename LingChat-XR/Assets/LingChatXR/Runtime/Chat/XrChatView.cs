@@ -19,7 +19,10 @@ namespace LingChatXR.Chat
         private Texture2D fade;
         private RenderTexture testRender;
         private VisualElement historyPanel, content, dialogue;
-        private Button expand;
+        private Button expand,toyToggle,takeCoin,storeCoin;
+        private VisualElement toyPanel;
+        private Label toyState;
+        private bool toyOpen;
         private VisualElement walkBar;private Label walkHint;private Button walkStop;
 #if UNITY_EDITOR
         Button ardyButton;
@@ -133,6 +136,17 @@ namespace LingChatXR.Chat
             }){text="测试 ARDY 行走",name="ardy-game-start"};
             ardyButton.AddToClassList("settings-primary");walkBar.Add(ardyButton);
 #endif
+            toyToggle=new Button(()=>toyOpen=!toyOpen){text="玩具箱",name="toy-box-toggle"};
+            toyToggle.AddToClassList("settings-primary");walkBar.Add(toyToggle);
+            toyPanel=Element(root,"toy-panel");
+            Text(toyPanel,"Token 硬币","character-subtitle");
+            var toyActions=Element(toyPanel,"toy-actions");
+            takeCoin=new Button(()=>FindAnyObjectByType<FeiyuPreview>()?.CoinToy?.Take()){text="取出硬币",name="toy-box-take"};
+            storeCoin=new Button(()=>FindAnyObjectByType<FeiyuPreview>()?.CoinToy?.Store()){text="收回",name="toy-box-store"};
+            takeCoin.AddToClassList("settings-primary");toyActions.Add(takeCoin);toyActions.Add(storeCoin);
+            Text(toyPanel,"桌面左键拖放滚币 · 按住 H 移动模拟手","walk-hint");
+            toyState=Text(toyPanel,"","walk-hint");
+            toyPanel.style.display=DisplayStyle.None;
             root.RegisterCallback<GeometryChangedEvent>(_ => {
                 bool narrow = root.resolvedStyle.width < 1100;
                 content.style.left = content.style.right = Length.Percent(narrow ? 6 : 15);
@@ -243,6 +257,15 @@ namespace LingChatXR.Chat
 #if UNITY_EDITOR
             if(p!=null && !p.ExternalInput && p.Ready&&!modal)walkVisible=true;
 #endif
+            bool toysAvailable=walkVisible && p.CoinToy!=null && p.Interaction.PlaneConfirmed;
+            toyToggle.style.display=toysAvailable?DisplayStyle.Flex:DisplayStyle.None;
+            toyPanel.style.display=toysAvailable&&toyOpen?DisplayStyle.Flex:DisplayStyle.None;
+            if(toysAvailable && toyOpen)
+            {
+                takeCoin.text=p.CoinToy.Deployed?"取回硬币":"取出硬币";
+                storeCoin.SetEnabled(p.CoinToy.Deployed);
+                toyState.text=p.CoinToy.Status??"";
+            }
             walkBar.style.display=walkVisible?DisplayStyle.Flex:DisplayStyle.None;
             if(walkVisible){walkHint.text=p.Locomotion?.Status??"点桌面空白处行走";walkStop.style.display=p.Locomotion!=null&&p.Locomotion.Active?DisplayStyle.Flex:DisplayStyle.None;}
 #if UNITY_EDITOR
@@ -275,7 +298,7 @@ namespace LingChatXR.Chat
             var panel = active.document.rootVisualElement.panel;
             Vector2 p = RuntimePanelUtils.ScreenToPanel(panel, new Vector2(mouse.x, Screen.height - mouse.y));
             if(active.MotionWindow.IsOpen)return active.MotionWindow.Root.worldBound.Contains(p);
-            bool hit=(!active.DialogueCollapsed&&active.content.worldBound.Contains(p)) || VisibleHit(active.walkBar,p) || VisibleHit(active.expand,p) || VisibleHit(active.historyPanel, p) || active.Settings.IsOpen || active.sizeEdit.Active;
+            bool hit=(!active.DialogueCollapsed&&active.content.worldBound.Contains(p)) || VisibleHit(active.walkBar,p) || VisibleHit(active.toyPanel,p) || VisibleHit(active.expand,p) || VisibleHit(active.historyPanel, p) || active.Settings.IsOpen || active.sizeEdit.Active;
             if(!hit&&(Input.GetMouseButtonDown(0)||Input.GetMouseButtonDown(1)||Input.GetMouseButtonDown(2)))active.input.Blur();
             return hit;
         }
