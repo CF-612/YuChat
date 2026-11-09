@@ -8,8 +8,40 @@ namespace LingChatXR
     [DefaultExecutionOrder(11020)]
     public sealed class PcCoinChase : MonoBehaviour
     {
-        public const float Radius=.031f;
-        const float PalmRadius=.058f;
+        [SerializeField,Range(.03f,.06f)] float radius=.040f;
+        public float Radius=>radius;
+        // 归一化板面坐标，指根贴近正面、掌根位于边缘。朝向按身体左右计算。
+        [SerializeField] Vector2 lowerGrip=new Vector2(1.075f,-.12f);
+        [SerializeField] float facePad=.002f;
+        [SerializeField] Vector2 holdForwardAndHeight=new Vector2(.196f,.404f);
+        [SerializeField] float holdTilt=-13f;
+        Quaternion gripLocalFrame;
+        Vector3 liftFrom;
+        public Quaternion GripFrame=>coin.rotation*gripLocalFrame;
+        public Vector3 GripPoint(float side)
+        {
+            var face=GripFrame*Vector3.forward;
+            float padDepth=Mathf.Lerp(facePad*.25f,-.003f-facePad,Mathf.InverseLerp(.6f,1,-face.y));
+            return coin.position+GripFrame*new Vector3(side*lowerGrip.x*Radius,lowerGrip.y*Radius,padDepth);
+        }
+#if UNITY_EDITOR
+        public async Task<bool> ReviewStaticGrasp()
+        {
+            StopTracking();
+            var facing=scene.SpatialRotation;
+            coin.rotation=facing*Quaternion.Euler(83,0,0);
+            gripLocalFrame=Quaternion.Inverse(coin.rotation)*facing*Quaternion.Euler(holdTilt,0,0);
+            coin.position=Feet+facing*Vector3.forward*(actor.HeightMeters*holdForwardAndHeight.x)+Vector3.up*actor.HeightMeters*holdForwardAndHeight.y;
+            coin.isKinematic=true;
+            if(!await actor.Motions.BeginToyCarry(this))return false;
+            actor.Motions.AcceptToyContact();liftFrom=coin.position;liftRotation=coin.rotation;liftAge=1;inArms=true;
+            return true;
+        }
+        public void SetReviewDiameter(float diameter){if(!coin)radius=diameter*.5f;}
+#endif
+        public float LeftGripError {get;private set;}
+        public float RightGripError {get;private set;}
+        float PalmRadius=>Mathf.Max(.058f,Radius*1.52f);
         FeiyuPreview scene;
         FeiyuAvatar actor;
         PetInteraction table;
@@ -21,16 +53,21 @@ namespace LingChatXR
         Vector3 lastSeen,dragStart,carryOffset;
         bool open,dragging,carrying,seen,searching,controlling,outside;
         float invisibleAge,visibleAge,searchAge,nextPlan;
-        readonly List<Transform> gripPoints=new();
+        Transform leftPadA,leftPadB,rightPadA,rightPadB;
         MeshCollider coinHull;
-        Transform leftHand,rightHand;
+        Transform leftUpperArm,rightUpperArm;
         public float ContactGap {get;private set;}
         Task<bool> carryRequest;
-        float settledTime,liftAge;
+        float settledTime,liftAge,bothContactTime,missedContactTime;
+        float handTakeTime;
+        bool easingHandTake;
+        Pose handTakeFrom;
         bool inArms,carryDeclined;
-        Vector3 gripOffset;
+
         Quaternion liftRotation;
+        public bool PalmOwnsCoin=>carrying;
         public bool InArms=>inArms;
+        public bool HugSettled=>inArms && actor && actor.Motions.CarryLiftComplete && bothContactTime>=.15f;
         public bool Deployed=>coin!=null && coin.gameObject.activeSelf;
         public Vector3 CoinPosition=>coin.position;
         public Vector3 LastSeen=>lastSeen;
@@ -95,9 +132,11 @@ namespace LingChatXR
             var hand=new GameObject("模拟手");palm=hand.transform;palm.SetParent(transform,false);
             var tint=Paint(new Color(.70f,.85f,.97f));
             var pad=Shape(PrimitiveType.Sphere,palm,Vector3.zero,new Vector3(.116f,.040f,.116f),tint);
-            palmCover=pad.AddComponent<BoxCollider>();palmCover.isTrigger=true;
+            var cover=pad.AddComponent<MeshCollider>();cover.sharedMesh=pad.GetComponent<MeshFilter>().sharedMesh;
+            cover.convex=true;cover.isTrigger=true;palmCover=cover;
             for(int i=0;i<4;i++)Shape(PrimitiveType.Sphere,palm,new Vector3((i-1.5f)*.021f,0,.044f),new Vector3(.022f,.020f,.062f-.006f*Mathf.Abs(i-1.5f)),tint);
             Shape(PrimitiveType.Sphere,palm,new Vector3(-.049f,0,.012f),new Vector3(.035f,.024f,.045f),tint);
+            palm.localScale=Vector3.one*(PalmRadius/.058f);
             hand.SetActive(false);
         }
         public void Take()
@@ -108,12 +147,13 @@ namespace LingChatXR
             if(ardy!=null && ardy.Active)ardy.End("切换至玩具箱");
 #endif
             Store();actor=scene.Avatar;table=scene.Interaction;
-            actor.Instance.TryGetBoneTransform(HumanBodyBones.LeftHand,out leftHand);
-            actor.Instance.TryGetBoneTransform(HumanBodyBones.RightHand,out rightHand);
+            actor.Instance.TryGetBoneTransform(HumanBodyBones.LeftUpperArm,out leftUpperArm);
+            actor.Instance.TryGetBoneTransform(HumanBodyBones.RightUpperArm,out rightUpperArm);
             _=actor.Motions.WarmToyCarry();
-            gripPoints.Clear();
-            foreach(var bone in new[]{HumanBodyBones.LeftHand,HumanBodyBones.RightHand,HumanBodyBones.LeftMiddleDistal,HumanBodyBones.RightMiddleDistal,HumanBodyBones.LeftIndexDistal,HumanBodyBones.RightIndexDistal})
-                if(actor.Instance.TryGetBoneTransform(bone,out var point) && point)gripPoints.Add(point);
+            actor.Instance.TryGetBoneTransform(HumanBodyBones.LeftIndexProximal,out leftPadA);
+            actor.Instance.TryGetBoneTransform(HumanBodyBones.LeftLittleProximal,out leftPadB);
+            actor.Instance.TryGetBoneTransform(HumanBodyBones.RightIndexProximal,out rightPadA);
+            actor.Instance.TryGetBoneTransform(HumanBodyBones.RightLittleProximal,out rightPadB);
             if(!coin)Build();
             coin.gameObject.SetActive(true);
             var pos=Feet+scene.SpatialRotation*Vector3.forward*.16f;
@@ -135,13 +175,20 @@ namespace LingChatXR
         {
             if(!Deployed)return;
             palm.gameObject.SetActive(down);
-            if(!down){if(carrying){coin.isKinematic=false;coin.WakeUp();}carrying=false;return;}
+            if(!down){if(carrying){coin.isKinematic=false;coin.WakeUp();}carrying=false;easingHandTake=false;return;}
             at.y=table.PlaneCenter.Y+.043f;palm.position=at;
-            if(!carrying && Flat(coin.position-at).magnitude<PalmRadius*.59f && (inArms || Mathf.Abs(coin.position.y-at.y)<.06f)){
+            if(!carrying && Flat(coin.position-at).magnitude+Radius<=PalmRadius && (inArms || Mathf.Abs(coin.position.y-at.y)<.06f)){
+                easingHandTake=inArms;handTakeTime=Time.time;handTakeFrom=new Pose(coin.position,coin.rotation);
                 ReleaseFromArms();
-                carrying=true;coin.isKinematic=true;coin.rotation=Quaternion.identity;carryOffset=Flat(coin.position-at);
+                carrying=true;coin.isKinematic=true;carryOffset=Flat(coin.position-at);
             }
-            if(carrying)coin.position=at+carryOffset-Vector3.up*.038f;
+            if(carrying){
+                at.y=table.PlaneCenter.Y+.006f+.020f*palm.localScale.y;
+                float t=easingHandTake?Mathf.SmoothStep(0,1,Mathf.Clamp01((Time.time-handTakeTime)/.26f)):1;
+                palm.position=Vector3.Lerp(handTakeFrom.position+Vector3.up*.018f,at,t);
+                coin.position=Vector3.Lerp(handTakeFrom.position,new Vector3(at.x,table.PlaneCenter.Y+.004f,at.z)+carryOffset,t);
+                coin.rotation=Quaternion.Slerp(handTakeFrom.rotation,Quaternion.identity,t);
+            }
             Physics.SyncTransforms();
         }
         internal bool Pointer(Ray ray,bool overUi)
@@ -181,9 +228,19 @@ namespace LingChatXR
         bool Visible()
         {
             var delta=coin.position-actor.EyePosition;
-            if(Vector3.Angle(searching?Flat(actor.SightDirection):scene.SpatialRotation*Vector3.forward,Flat(delta))>100)return false;
+            bool lookingDown=carryRequest!=null && delta.y<0 && Flat(delta).magnitude<actor.HeightMeters*.5f;
+            if(!lookingDown && Vector3.Angle(searching?Flat(actor.SightDirection):scene.SpatialRotation*Vector3.forward,Flat(delta))>100)return false;
             if(!palm.gameObject.activeSelf)return true;
-            return !carrying && !palmCover.Raycast(new Ray(actor.EyePosition,delta.normalized),out _,delta.magnitude);
+            var eye=actor.EyePosition;
+            // 任一币缘仍在视野中，就能更新记忆。提币的所有权本身不能作为遮挡证据。
+            for(int i=0;i<8;i++)
+            {
+                float angle=i*Mathf.PI*.25f;
+                var rim=coin.position+coin.rotation*new Vector3(Mathf.Cos(angle)*Radius,.003f,Mathf.Sin(angle)*Radius);
+                var ray=rim-eye;
+                if(!palmCover.Raycast(new Ray(eye,ray.normalized),out _,ray.magnitude))return true;
+            }
+            return false;
         }
         static bool Crosses(Vector3 a,Vector3 b,Vector3 center,float r)
         {
@@ -242,30 +299,55 @@ namespace LingChatXR
         {
             if((carryRequest!=null || inArms) && actor)actor.Motions.EndToyCarry();
             if(inArms && coin)coin.isKinematic=false;
-            inArms=false;carryRequest=null;settledTime=0;carryDeclined=false;
+            inArms=false;bothContactTime=missedContactTime=0;carryRequest=null;settledTime=0;carryDeclined=false;
         }
         void AttemptCarry(float dt)
         {
-            if(!leftHand || !rightHand || dragging || carrying || actor.Motions.Busy || carryDeclined)return;
+            if(!leftPadA || !leftPadB || !rightPadA || !rightPadB || dragging || carrying || actor.Motions.Busy || carryDeclined)return;
             if(coin.linearVelocity.magnitude>.045f){settledTime=0;return;}
             settledTime+=dt;
-            if(settledTime>=.55f)carryRequest=actor.Motions.BeginToyCarry(coin.position,Radius);
+            if(settledTime<.55f)return;
+            var normal=coin.rotation*Vector3.up;
+            if(Vector3.Dot(normal,-Vector3.up+scene.SpatialRotation*Vector3.forward*.2f)<0)normal=-normal;
+            var side=Vector3.ProjectOnPlane(scene.SpatialRotation*Vector3.right,normal);
+            if(side.sqrMagnitude<.01f)return;
+            var frame=Quaternion.LookRotation(normal,Vector3.Cross(normal,side));
+            gripLocalFrame=Quaternion.Inverse(coin.rotation)*frame;
+            carryRequest=actor.Motions.BeginToyCarry(this);
         }
-        Vector3 CarryAnchor()
+        float LeftSide=>Vector3.Dot(leftUpperArm.position-rightUpperArm.position,scene.SpatialRotation*Vector3.right)>=0?1:-1;
+        void MeasureGrip()
         {
-            var hands=(leftHand.position+rightHand.position)*.5f;
-            return hands+scene.SpatialRotation*Vector3.forward*(Radius*.32f)+Vector3.up*(Radius*.34f);
+            float side=LeftSide;
+            LeftGripError=Vector3.Distance((leftPadA.position+leftPadB.position)*.5f,GripPoint(side));
+            RightGripError=Vector3.Distance((rightPadA.position+rightPadB.position)*.5f,GripPoint(-side));
+            ContactGap=Mathf.Max(LeftGripError,RightGripError);
         }
         void LateUpdate()
         {
             if(!inArms || !actor)return;
+            MeasureGrip();
+            bool both=ContactGap<=Mathf.Min(Radius*.14f,actor.HeightMeters*.025f);
+            bothContactTime=both?bothContactTime+Time.deltaTime:0;
+            missedContactTime=both?0:missedContactTime+Time.deltaTime;
+            if(!actor.Motions.CarryLiftComplete || liftAge<.64f){Status="抬起硬币";return;}
+            if(HugSettled){Status="双手抱稳了";return;}
+            Status="正在合拢双手";
+            if(missedContactTime>.4f){ReleaseFromArms();carryDeclined=true;Status="松开硬币";}
+        }
+        void AdvanceCoin()
+        {
             liftAge+=Time.deltaTime;
             var facing=scene.SpatialRotation;
-            var anchor=CarryAnchor();
-            float t=Mathf.SmoothStep(0,1,Mathf.Clamp01(liftAge/.52f));
-            coin.position=anchor+gripOffset*(1-t);
-            coin.rotation=Quaternion.Slerp(liftRotation,facing*Quaternion.Euler(74,0,0)*Quaternion.Euler(0,180,0),t);
-            actor.ToyAttention=lastSeen=coin.position;
+            var frame=facing*Quaternion.Euler(holdTilt,0,0);
+            var anchor=Feet+facing*Vector3.forward*(actor.HeightMeters*holdForwardAndHeight.x)
+                +Vector3.up*(actor.HeightMeters*holdForwardAndHeight.y);
+            float t=Mathf.SmoothStep(0,1,Mathf.Clamp01(liftAge/.64f));
+            coin.position=Vector3.Lerp(liftFrom,anchor,t);
+            coin.rotation=Quaternion.Slerp(liftRotation,frame*Quaternion.Inverse(gripLocalFrame),t);
+            lastSeen=coin.position;
+            var ahead=Feet+facing*Vector3.forward*actor.HeightMeters+Vector3.up*actor.HeightMeters*.78f;
+            actor.ToyAttention=Vector3.Lerp(coin.position,ahead,Mathf.SmoothStep(0,1,Mathf.InverseLerp(.7f,1.4f,liftAge)));
         }
         void Update()
         {
@@ -274,7 +356,9 @@ namespace LingChatXR
             if(table.State!=PetState.Idle || scene.SizeEditing){StopTracking();return;}
             bool visible=Visible();
             if(inArms){
-                if(actor.Motions.HoldingToyPose)return;
+                if(actor.Motions.HoldingToyPose){
+                    AdvanceCoin();return;
+                }
                 ReleaseFromArms();
             }
             if(carryRequest!=null){
@@ -284,16 +368,14 @@ namespace LingChatXR
                     if(carryRequest.IsCompletedSuccessfully && carryRequest.Result && actor.Motions.HoldingToyPose){
                         Status="俯身捡硬币";
                         if(!actor.Motions.ReachingToy)return;
-                        ContactGap=float.PositiveInfinity;
-                        foreach(var point in gripPoints)
-                            ContactGap=Mathf.Min(ContactGap,Vector3.Distance(point.position,coinHull.ClosestPoint(point.position)));
-                        if(ContactGap>actor.HeightMeters*.055f){
+                        MeasureGrip();
+                        if(ContactGap>actor.HeightMeters*.028f){
                             if(actor.Motions.CarryReachExpired){ReleaseFromArms();carryDeclined=true;Status="硬币够不到";}
                             return;
                         }
                         actor.Motions.AcceptToyContact();
-                        gripOffset=coin.position-CarryAnchor();liftRotation=coin.rotation;liftAge=0;
-                        coin.isKinematic=true;inArms=true;Status="抱住硬币了";
+                        liftFrom=coin.position;liftRotation=coin.rotation;liftAge=0;
+                        coin.isKinematic=true;inArms=true;Status="抬起硬币";
                     }else carryDeclined=true;
                     carryRequest=null;
                 }
@@ -319,7 +401,7 @@ namespace LingChatXR
             }
             if(Time.time<nextPlan)return;
             nextPlan=Time.time+.10f;
-            var delta=Flat(lastSeen-Feet);float reach=table.RadiusMeters+Radius;
+            var delta=Flat(lastSeen-Feet);float reach=Mathf.Max(table.RadiusMeters, Radius*.95f);
             var goal=Clamp(lastSeen-delta.normalized*reach,table.RadiusMeters);
             var travel=scene.Locomotion;
             if(delta.magnitude<=reach+.012f || Flat(goal-Feet).magnitude<.008f){

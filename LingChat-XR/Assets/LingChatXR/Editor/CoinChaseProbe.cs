@@ -3,6 +3,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using UnityEditor;
 using UnityEngine.UIElements;
 using LingChatXR.Chat;
@@ -76,6 +77,13 @@ namespace LingChatXR.Editor
             const int fps=20;Time.captureFramerate=fps;
             var target=new RenderTexture(832,624,24);target.Create();
             var texture=new Texture2D(832,624,TextureFormat.RGB24,false);
+            if(Environment.GetEnvironmentVariable("XR_COIN_GRIP_REVIEW")=="1")
+            {
+                var review=ReviewGrip(live,coin,camera,target,texture);
+                while(review.MoveNext())yield return review.Current;
+                Time.captureFramerate=0;target.Release();Object.DestroyImmediate(target);Object.DestroyImmediate(texture);
+                yield break;
+            }
             if(Environment.GetEnvironmentVariable("XR_COIN_HUG")=="1")
             {
                 coin.Take();
@@ -195,7 +203,7 @@ namespace LingChatXR.Editor
                 if(i==800){
                     coin.Take();var direction=live.SpatialRotation*Vector3.forward;
                     var edgePoint=feet;
-                    while(core.ContainsFootprint(FeiyuPreview.ToCore(edgePoint+direction*.01f),PcCoinChase.Radius+.005f))edgePoint+=direction*.01f;
+                    while(core.ContainsFootprint(FeiyuPreview.ToCore(edgePoint+direction*.01f),coin.Radius+.005f))edgePoint+=direction*.01f;
                     coin.Roll(edgePoint,direction*.34f);
                 }
                 if(i==900)coin.Take();
@@ -227,6 +235,26 @@ namespace LingChatXR.Editor
             Time.captureFramerate=fps;
             coin.Take();
             for(int j=0;j<fps*2;j++)yield return null;
+            var disk=coin.transform.Find("Token 硬币");
+            var cover=coin.transform.Find("模拟手").GetComponentInChildren<MeshCollider>(true);
+            model.Instance.TryGetBoneTransform(HumanBodyBones.Head,out var viewerHead);
+            bool partialCover=false;
+            // 找到遮住币心、仍露出币缘的实际位置，再放行一帧观察角色是否保留目标。
+            for(int step=0;step<24 && !partialCover;step++){
+                var offset=Quaternion.AngleAxis(step*15f,Vector3.up)*forward*(coin.Radius*1.2f);
+                coin.Hand(true,coin.CoinPosition+offset);
+                bool Covered(Vector3 point){
+                    var delta=point-viewerHead.position;
+                    return cover.Raycast(new Ray(viewerHead.position,delta.normalized),out _,delta.magnitude);
+                }
+                if(!Covered(coin.CoinPosition))continue;
+                bool rimVisible=Enumerable.Range(0,8).Any(k=>!Covered(disk.TransformPoint(
+                    new Vector3(Mathf.Cos(k*Mathf.PI/4)*coin.Radius,.003f,Mathf.Sin(k*Mathf.PI/4)*coin.Radius))));
+                if(!rimVisible)continue;
+                yield return null;
+                partialCover=!coin.PalmOwnsCoin && !coin.Searching && Vector3.Distance(coin.LastSeen,coin.CoinPosition)<.002f;
+            }
+            coin.Hand(false,default);
             var coverPoint=coin.CoinPosition;var remembered=coin.LastSeen;
             int priorSearches=coin.Searches;
             bool heldToStore=true;
@@ -245,9 +273,94 @@ namespace LingChatXR.Editor
             bool switched=!coin.Deployed;
             while(!switching.IsCompleted)yield return null;
             switched &=switching.Result && !coin.Deployed && !live.Locomotion.Active;
-            string summary=$"continuousCover={heldToStore} chased={chased} detour={detour} noPath={noPath} singleSearch={singleSearch} grabDuringTravel={grabDuringTravel} reset={reset} switched={switched} obstacle={blocked} memory={memoryHeld} reveal={revealed} grab={grabbed} landing={landed} edge={edge} footprint={safe} stored={!coin.Deployed} searchesAtCover={searchStart} searches={coin.Searches}";
+            string summary=$"partialCover={partialCover} continuousCover={heldToStore} chased={chased} detour={detour} noPath={noPath} singleSearch={singleSearch} grabDuringTravel={grabDuringTravel} reset={reset} switched={switched} obstacle={blocked} memory={memoryHeld} reveal={revealed} grab={grabbed} landing={landed} edge={edge} footprint={safe} stored={!coin.Deployed} searchesAtCover={searchStart} searches={coin.Searches}";
             File.WriteAllText(Path.Combine(Output,"result.txt"),summary);
-            if(!(heldToStore&&chased&&detour&&noPath&&singleSearch&&grabDuringTravel&&reset&&switched&&blocked&&memoryHeld&&revealed&&grabbed&&landed&&edge&&safe&&!coin.Deployed))throw new Exception(summary);
+            if(!(partialCover&&heldToStore&&chased&&detour&&noPath&&singleSearch&&grabDuringTravel&&reset&&switched&&blocked&&memoryHeld&&revealed&&grabbed&&landed&&edge&&safe&&!coin.Deployed))throw new Exception(summary);
+        }
+        static IEnumerator ReviewGrip(FeiyuPreview scene,PcCoinChase toy,Camera camera,RenderTexture rt,Texture2D texture)
+        {
+            var actor=scene.Avatar;
+            Vector3 Bone(HumanBodyBones id){actor.Instance.TryGetBoneTransform(id,out var bone);return bone.position;}
+            Vector3 Palm(bool left)=>.5f*(Bone(left?HumanBodyBones.LeftIndexProximal:HumanBodyBones.RightIndexProximal)+Bone(left?HumanBodyBones.LeftLittleProximal:HumanBodyBones.RightLittleProximal));
+            var rows=new List<string>{"frame,phase,leftError,rightError,leftSurface,rightSurface,lctl,rctl,status,lExcess,rExcess,leftSkinZone,leftSkinSdf,leftSkinInside,rightSkinZone,rightSkinSdf,rightSkinInside,leftCuffZone,leftCuffSdf,leftCuffInside,rightCuffZone,rightCuffSdf,rightCuffInside"};
+            using var surfaces=new CoinGripSurfaceProbe(actor);
+            var images=new Newtonsoft.Json.Linq.JObject();
+            bool movie=Environment.GetEnvironmentVariable("XR_COIN_MOVIE")=="1";
+            var frames=Path.Combine(Output,"frames");if(movie)Directory.CreateDirectory(frames);
+            var diameter=Environment.GetEnvironmentVariable("XR_COIN_DIAMETER");
+            if(!string.IsNullOrEmpty(diameter))toy.SetReviewDiameter(float.Parse(diameter,System.Globalization.CultureInfo.InvariantCulture));
+            toy.Take();
+            if(Environment.GetEnvironmentVariable("XR_COIN_STATIC")=="1"){
+                var setup=toy.ReviewStaticGrasp();while(!setup.IsCompleted)yield return null;
+                if(!setup.Result)throw new Exception("静态姿势准备失败");
+            }
+            var disk=scene.transform.Find("Token 硬币");
+            float radius=disk.GetComponentInChildren<MeshCollider>().transform.localScale.x*.5f;
+            int consecutive=0,total=movie?720:2000;
+            void View(float degrees)
+            {
+                var center=FeiyuPreview.ToUnity(scene.Interaction.Position)+Vector3.up*actor.HeightMeters*.5f;
+                var direction=scene.SpatialRotation*Quaternion.Euler(0,degrees,0)*Vector3.forward;
+                camera.orthographic=true;camera.aspect=4f/3f;camera.orthographicSize=actor.HeightMeters*.69f;
+                camera.transform.position=center+direction*.65f;camera.transform.LookAt(center);
+            }
+            Vector3 takePoint=default;
+            for(int n=0;n<total;n++){
+                if(movie && n==550)takePoint=toy.CoinPosition;
+                if(movie && n>=550 && n<580)toy.Hand(true,takePoint+scene.SpatialRotation*Vector3.right*Mathf.Clamp01((n-550)/22f)*.12f);
+                if(movie && n==579 && (!toy.PalmOwnsCoin || toy.InArms))
+                    throw new Exception("模拟掌未完成从角色手中取币");
+                if(movie && n==580){toy.Hand(false,default);toy.Store();}
+                yield return null;
+                bool active=toy.InArms;
+                consecutive=toy.HugSettled?consecutive+1:0;
+                // 使用实际硬币轴，取朝玩家的表面与向上的边缘轴。平躺时使用世界朝向厘定两侧。
+                Vector3 normal=disk.up;
+                if(Vector3.Dot(normal,scene.SpatialRotation*Vector3.forward)<0)normal=-normal;
+                Vector3 a=Palm(true),b=Palm(false);
+                float sign=Vector3.Dot(Bone(HumanBodyBones.LeftUpperArm)-Bone(HumanBodyBones.RightUpperArm),scene.SpatialRotation*Vector3.right)>0?1:-1;
+                var gripL=toy.GripPoint(sign);var gripR=toy.GripPoint(-sign);
+                var rig=actor.Instance.Runtime.ControlRig;
+                Vector3 Cpad(bool l)=>(rig.GetBoneTransform(l?HumanBodyBones.LeftIndexProximal:HumanBodyBones.RightIndexProximal).position+rig.GetBoneTransform(l?HumanBodyBones.LeftLittleProximal:HumanBodyBones.RightLittleProximal).position)*.5f;
+                float Surface(Vector3 point){
+                    var local=disk.InverseTransformPoint(point);
+                    float radial=new Vector2(local.x,local.z).magnitude-radius, depth=Mathf.Abs(local.y)-.003f;
+                    return new Vector2(Mathf.Max(0,radial),Mathf.Max(0,depth)).magnitude+Mathf.Min(0,Mathf.Max(radial,depth));
+                }
+                string phase=toy.HugSettled?"steady":active?"lifting":toy.PalmOwnsCoin?"player":!toy.Deployed?"stored":actor.Motions.HoldingToyPose?"reach":"table";
+                var profile=consecutive==60?new List<string>{"group,material,x,y,z"}:null;
+                var mesh=surfaces.Measure(disk,radius,gripL,gripR,profile,toy.GripFrame);
+                if(profile!=null){
+                    string Landmark(HumanBodyBones id){
+                        var v=Quaternion.Inverse(toy.GripFrame)*(Bone(id)-disk.position);
+                        return FormattableString.Invariant($"4,{id},{v.x:F5},{v.y:F5},{v.z:F5}");
+                    }
+                    foreach(var id in new[]{HumanBodyBones.LeftHand,HumanBodyBones.RightHand,HumanBodyBones.LeftLowerArm,HumanBodyBones.RightLowerArm,HumanBodyBones.LeftUpperArm,HumanBodyBones.RightUpperArm})profile.Add(Landmark(id));
+                    File.WriteAllLines(Path.Combine(Output,"surface-sample.csv"),profile);
+                }
+                rows.Add(FormattableString.Invariant($"{n},{phase},{Vector3.Distance(a,gripL):F5},{Vector3.Distance(b,gripR):F5},{Surface(a):F5},{Surface(b):F5},{Vector3.Distance(Cpad(true),gripL):F5},{Vector3.Distance(Cpad(false),gripR):F5},{toy.Status},{actor.Motions.GripReachDeficit.x:F5},{actor.Motions.GripReachDeficit.y:F5},{mesh}"));
+                if(consecutive==60){
+                    foreach(int angle in new[]{0,45,90}){
+                        View(angle);string name="grip-"+angle;
+                        LocomotionProbe.Capture(camera,name);
+                        Newtonsoft.Json.Linq.JArray Screen(Vector3 world){var v=camera.WorldToViewportPoint(world);return new Newtonsoft.Json.Linq.JArray(v.x,1-v.y);}
+                        images[name]=new Newtonsoft.Json.Linq.JObject{["left"]=Screen(a),["right"]=Screen(b),["zoneL"]=Screen(gripL),["zoneR"]=Screen(gripR),["center"]=Screen(disk.position),["face"]=Screen(disk.position+normal*radius),["owner"]=phase,["fingerL"]=Screen(Bone(HumanBodyBones.LeftMiddleDistal)),["fingerR"]=Screen(Bone(HumanBodyBones.RightMiddleDistal)),
+                            ["elbowL"]=Screen(Bone(HumanBodyBones.LeftLowerArm)),["elbowR"]=Screen(Bone(HumanBodyBones.RightLowerArm)),
+                            ["rim"]=new Newtonsoft.Json.Linq.JArray(Enumerable.Range(0,65).Select(i=>Screen(disk.TransformPoint(new Vector3(radius*Mathf.Cos(i*Mathf.PI/32),0,radius*Mathf.Sin(i*Mathf.PI/32))))))};
+                    }
+                    if(!movie)break;
+                }
+                if(movie){
+                    View(Mathf.SmoothStep(0,90,Mathf.InverseLerp(180,440,n)));
+                    var old=camera.targetTexture;var prior=RenderTexture.active;
+                    camera.targetTexture=rt;camera.Render();RenderTexture.active=rt;texture.ReadPixels(new Rect(0,0,rt.width,rt.height),0,0);texture.Apply();
+                    camera.targetTexture=old;RenderTexture.active=prior;File.WriteAllBytes(Path.Combine(frames,$"{n:D4}.jpg"),texture.EncodeToJPG(88));
+                }
+            }
+            File.WriteAllLines(Path.Combine(Output,"grip.csv"),rows);
+            File.WriteAllText(Path.Combine(Output,"views.json"),images.ToString());
+            File.WriteAllText(Path.Combine(Output,"size.txt"),$"diameter={2*radius:F3} height={actor.HeightMeters:F3}");
+            if(images.Count!=3)throw new Exception("未取得连续三秒双手抱持观察帧");
         }
     }
 }
